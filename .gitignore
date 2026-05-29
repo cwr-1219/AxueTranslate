@@ -1,0 +1,39 @@
+# .NET Core/WPF
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.opensdf
+*.sdf
+*.xml
+*.pid
+*.log
+
+# App-specific build outputs
+SpeedTranslate/bin/
+SpeedTranslate/obj/
+TestWpf/bin/
+TestWpf/obj/
+Setup/
+
+# Gemini and Agent directories
+.gemini/
+.antigravitycli/
+artifacts/
+scratch/
+error.log
+config.json
+
+# Inno Setup output
+SpeedTranslate/bin/Release/net8.0-windows/win-x64/Setup/
+unins000.*

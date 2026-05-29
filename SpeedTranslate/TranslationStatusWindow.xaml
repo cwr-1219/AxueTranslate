@@ -1,0 +1,78 @@
+<Window x:Class="SpeedTranslate.TranslationStatusWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TranslationStatus" 
+        Height="50" 
+        Width="180" 
+        WindowStyle="None" 
+        AllowsTransparency="True" 
+        Background="Transparent" 
+        Topmost="True" 
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        WindowStartupLocation="Manual">
+    <Window.Resources>
+        <!-- 呼吸灯动画 -->
+        <Storyboard x:Key="PulseStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="BackgroundBorder"
+                             Storyboard.TargetProperty="Opacity"
+                             From="0.85" To="0.65"
+                             Duration="0:0:1" />
+        </Storyboard>
+    </Window.Resources>
+    
+    <Border x:Name="BackgroundBorder" 
+            Background="#1A1824" 
+            BorderBrush="#4B3A75" 
+            BorderThickness="1" 
+            CornerRadius="12" 
+            Opacity="0.85">
+        <Border.Effect>
+            <DropShadowEffect Color="#A855F7" BlurRadius="15" ShadowDepth="0" Opacity="0.4" />
+        </Border.Effect>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="40" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            
+            <!-- 旋转 Loading 图标 -->
+            <Viewbox Grid.Column="0" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid Width="24" Height="24">
+                    <!-- 精致的暗底圆环轨道 -->
+                    <Ellipse Stroke="#2D1C3D" StrokeThickness="2.2" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!-- 居中精准旋转的前景亮紫色圆弧 -->
+                    <Path x:Name="SpinnerPath" Data="M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z" Fill="#A855F7">
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="0" CenterX="12" CenterY="12"/>
+                        </Path.RenderTransform>
+                        <Path.Triggers>
+                            <EventTrigger RoutedEvent="Path.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetProperty="(RenderTransform).(RotateTransform.Angle)"
+                                                         From="0" To="360"
+                                                         Duration="0:0:0.9"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Path.Triggers>
+                    </Path>
+                </Grid>
+            </Viewbox>
+            
+            <!-- 文字提示 -->
+            <TextBlock Grid.Column="1" 
+                       x:Name="StatusTextBlock"
+                       Text="AI 正在翻译中..." 
+                       Foreground="#E2E8F0" 
+                       FontFamily="Microsoft YaHei" 
+                       FontSize="13" 
+                       FontWeight="Medium"
+                       VerticalAlignment="Center" 
+                       HorizontalAlignment="Left" 
+                       Margin="0,0,10,0" />
+        </Grid>
+    </Border>
+</Window>
