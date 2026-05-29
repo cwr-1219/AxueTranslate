@@ -26,6 +26,28 @@
 
 ---
 
+## 📸 应用界面预览
+
+<table align="center">
+  <tr align="center">
+    <td><b>主设置界面 (Fluent Dark Style)</b></td>
+    <td><b>大模型自动拉取与切换</b></td>
+    <td><b>极简自转 Loading 悬浮框</b></td>
+  </tr>
+  <tr align="center">
+    <td><img src="assets/screenshot_main.png" width="280" alt="主设置界面" /></td>
+    <td><img src="assets/screenshot_model.png" width="280" alt="大模型自动拉取与切换" /></td>
+    <td><img src="assets/screenshot_status.png" width="280" alt="极简自转 Loading 悬浮框" /></td>
+  </tr>
+  <tr align="center">
+    <td width="33%" valign="top">支持深邃质感的暗色背景，带有全局热键拦截录入与目标语种/英文语气风格配置卡片。</td>
+    <td width="33%" valign="top">自动请求模型接口列表，弹窗已彻底消除 Windows 系统多余白框死角，圆角卡片质感精美。</td>
+    <td width="33%" valign="top">双自转轨道无抖动 Loading，智能检测剪贴板并原位粘贴，提供各类友好网络报错反馈。</td>
+  </tr>
+</table>
+
+---
+
 ## 🚀 如何安装与使用
 
 ### 1. 下载与安装
