@@ -37,3 +37,7 @@ config.json
 # Inno Setup output
 SpeedTranslate/bin/Release/net8.0-windows/win-x64/Setup/
 unins000.*
+
+# Allow commit the final installation package
+!ReleaseSetup/
+!ReleaseSetup/AxueTranslate_Setup.exe
