@@ -651,14 +651,11 @@ namespace SpeedTranslate
                     return;
                 }
 
-                // 创建并弹出 ContextMenu
-                var contextMenu = new ContextMenu();
-                
-                // 给弹出菜单定制精致暗黑主题样式
-                var menuStyle = new Style(typeof(ContextMenu));
-                menuStyle.Setters.Add(new Setter(ContextMenu.BackgroundProperty, (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#161224")));
-                menuStyle.Setters.Add(new Setter(ContextMenu.BorderBrushProperty, (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#3D355C")));
-                contextMenu.Style = menuStyle;
+                // 创建并弹出 ContextMenu，并赋予已消去白色栏的纯暗黑精致卡片样式
+                var contextMenu = new ContextMenu
+                {
+                    Style = (Style)FindResource("ModernContextMenuStyle")
+                };
 
                 foreach (var model in models)
                 {

@@ -274,6 +274,32 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- ContextMenu 精致样式：彻底消除系统默认的左侧 Icon 竖白条，保留纯暗色卡片及圆角阴影 -->
+        <Style x:Key="ModernContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Background" Value="#161224" />
+            <Setter Property="BorderBrush" Value="#3D355C" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HasDropShadow" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="4">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#000000" BlurRadius="12" Opacity="0.6" ShadowDepth="3" />
+                            </Border.Effect>
+                            <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto">
+                                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </ScrollViewer>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border Background="#0E0B16" BorderBrush="#2D2547" BorderThickness="1" CornerRadius="12">
