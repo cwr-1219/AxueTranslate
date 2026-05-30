@@ -29,6 +29,8 @@ Setup/
 # Gemini and Agent directories
 .gemini/
 .antigravitycli/
+.codegraph/
+.cursor/
 artifacts/
 scratch/
 error.log

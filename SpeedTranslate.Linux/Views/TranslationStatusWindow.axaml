@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SpeedTranslate.Linux.Views.TranslationStatusWindow"
+        Width="200"
+        Height="50"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Focusable="False"
+        CanResize="False"
+        WindowStartupLocation="Manual">
+
+    <Border Name="BackgroundBorder"
+            Background="#1A1824"
+            BorderBrush="#4B3A75"
+            BorderThickness="1"
+            CornerRadius="12"
+            Opacity="0.85"
+            BoxShadow="0 0 15 0 #66A855F7">
+        <Border.Styles>
+            <Style Selector="Border#BackgroundBorder">
+                <Style.Animations>
+                    <Animation Duration="0:0:1" IterationCount="Infinite" PlaybackDirection="Alternate">
+                        <KeyFrame Cue="0%">
+                            <Setter Property="Opacity" Value="0.85" />
+                        </KeyFrame>
+                        <KeyFrame Cue="100%">
+                            <Setter Property="Opacity" Value="0.65" />
+                        </KeyFrame>
+                    </Animation>
+                </Style.Animations>
+            </Style>
+        </Border.Styles>
+
+        <Grid ColumnDefinitions="40,*">
+            <!-- 旋转 Loading 圆弧 -->
+            <Viewbox Grid.Column="0" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid Width="24" Height="24">
+                    <Ellipse Stroke="#2D1C3D" StrokeThickness="2.2" Width="20" Height="20"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Path Name="SpinnerPath"
+                          Data="M12,4 A8,8 0 0,1 20,12"
+                          Stroke="#A855F7"
+                          StrokeThickness="2.4"
+                          StrokeLineCap="Round"
+                          RenderTransformOrigin="50%,50%">
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="0" />
+                        </Path.RenderTransform>
+                        <Path.Styles>
+                            <Style Selector="Path#SpinnerPath">
+                                <Style.Animations>
+                                    <Animation Duration="0:0:0.9" IterationCount="Infinite">
+                                        <KeyFrame Cue="0%">
+                                            <Setter Property="RotateTransform.Angle" Value="0" />
+                                        </KeyFrame>
+                                        <KeyFrame Cue="100%">
+                                            <Setter Property="RotateTransform.Angle" Value="360" />
+                                        </KeyFrame>
+                                    </Animation>
+                                </Style.Animations>
+                            </Style>
+                        </Path.Styles>
+                    </Path>
+                </Grid>
+            </Viewbox>
+
+            <TextBlock Grid.Column="1"
+                       Name="StatusTextBlock"
+                       Text="AI 正在翻译中..."
+                       Foreground="#E2E8F0"
+                       FontSize="13"
+                       FontWeight="Medium"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Left"
+                       Margin="0,0,10,0" />
+        </Grid>
+    </Border>
+</Window>
