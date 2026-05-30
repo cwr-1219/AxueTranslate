@@ -22,6 +22,141 @@
         <Storyboard x:Key="FadeOutStory">
             <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0" Duration="0:0:0.15"/>
         </Storyboard>
+
+        <!-- ComboBoxItem 样式：实现暗色列表项的高级悬停及选中反馈 -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#E2E8F0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="1,1" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border Name="ItemBorder" 
+                                Background="{TemplateBinding Background}" 
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}"
+                                Margin="{TemplateBinding Margin}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#A855F7" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#6366F1" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ComboBox ToggleButton 样式：微调宽度和圆角 -->
+        <Style x:Key="TooltipComboBoxToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Name="Border" 
+                                Background="#1D1A2E" 
+                                BorderBrush="#3D355C" 
+                                BorderThickness="1" 
+                                CornerRadius="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="20" />
+                                </Grid.ColumnDefinitions>
+                                <!-- 右侧下拉小箭头 -->
+                                <Path Grid.Column="1" 
+                                      Data="M0,0 L3,3 L6,0" 
+                                      Stroke="#94A3B8" 
+                                      StrokeThickness="1.5" 
+                                      HorizontalAlignment="Center" 
+                                      VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#A855F7" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#A855F7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ComboBox 主样式：微型化适配弹窗 -->
+        <Style x:Key="TooltipComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Background" Value="#1D1A2E" />
+            <Setter Property="BorderBrush" Value="#3D355C" />
+            <Setter Property="Foreground" Value="#E2E8F0" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="6,0,20,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <!-- 触发按钮 -->
+                            <ToggleButton Name="ToggleButton" 
+                                           Style="{StaticResource TooltipComboBoxToggleButtonStyle}" 
+                                           Focusable="False" 
+                                           IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" 
+                                           ClickMode="Press" />
+                            
+                            <!-- 当前选中项文本显示 -->
+                            <ContentPresenter Name="ContentSite" 
+                                               IsHitTestVisible="False" 
+                                               Content="{TemplateBinding SelectionBoxItem}" 
+                                               ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" 
+                                               ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" 
+                                               Margin="{TemplateBinding Padding}" 
+                                               VerticalAlignment="Center" 
+                                               HorizontalAlignment="Left" />
+                            
+                            <!-- 下拉弹窗 -->
+                            <Popup Name="PART_Popup" 
+                                   Placement="Bottom" 
+                                   IsOpen="{TemplateBinding IsDropDownOpen}" 
+                                   AllowsTransparency="True" 
+                                   Focusable="False" 
+                                   PopupAnimation="Slide">
+                                <Grid Name="DropDown" 
+                                      SnapsToDevicePixels="True" 
+                                      MinWidth="{TemplateBinding ActualWidth}" 
+                                      MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <!-- 圆角暗色下拉浮动卡片 -->
+                                    <Border Name="DropDownBorder" 
+                                            Background="#161224" 
+                                            BorderBrush="#3D355C" 
+                                            BorderThickness="1" 
+                                            CornerRadius="6" 
+                                            Margin="0,2,0,2">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="#000000" BlurRadius="8" Opacity="0.5" ShadowDepth="1" />
+                                        </Border.Effect>
+                                        <ScrollViewer Margin="1" SnapsToDevicePixels="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" CanContentScroll="True">
+                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="DropDownBorder" Property="Height" Value="95" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     
     <Border x:Name="WindowBorder" 
@@ -107,7 +242,32 @@
             
             <!-- 底部操作按钮 -->
             <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="译为" Foreground="#94A3B8" FontSize="10" VerticalAlignment="Center" Margin="0,0,5,0" />
+                    <ComboBox x:Name="LanguageComboBox" 
+                              Width="95"
+                              Height="22"
+                              Style="{StaticResource TooltipComboBoxStyle}"
+                              SelectionChanged="LanguageComboBox_SelectionChanged">
+                        <ComboBoxItem Content="自动双向" Tag="Auto" />
+                        <ComboBoxItem Content="英语" Tag="English" />
+                        <ComboBoxItem Content="简体中文" Tag="Chinese" />
+                        <ComboBoxItem Content="日语" Tag="Japanese" />
+                        <ComboBoxItem Content="韩语" Tag="Korean" />
+                        <ComboBoxItem Content="法语" Tag="French" />
+                        <ComboBoxItem Content="德语" Tag="German" />
+                        <ComboBoxItem Content="西班牙语" Tag="Spanish" />
+                    </ComboBox>
+                </StackPanel>
+
                 <Button x:Name="CopyButton" 
+                        Grid.Column="2"
                         HorizontalAlignment="Right"
                         Width="65"
                         Height="22"

@@ -22,6 +22,9 @@ namespace SpeedTranslate
 
         private bool _isClosing = false;
         private string _translatedText = "";
+        private AppConfig? _config;
+        private LLMService? _llmService;
+        private string _originalText = "";
 
         public TranslationTooltipWindow()
         {
@@ -32,13 +35,16 @@ namespace SpeedTranslate
         /// <summary>
         /// 弹窗展示翻译内容，并自动定位到鼠标光标处
         /// </summary>
-        public void ShowTooltip(string originalText, string translatedText, string modelName)
+        public void ShowTooltip(string originalText, string translatedText, AppConfig config, LLMService llmService)
         {
             _translatedText = translatedText;
+            _config = config;
+            _llmService = llmService;
+            _originalText = originalText;
             
             // 回填内容
             TranslatedTextBlock.Text = translatedText;
-            ModelTagText.Text = $"划词翻译 ({modelName})";
+            ModelTagText.Text = $"划词翻译 ({config.SelectedModel})";
 
             if (!string.IsNullOrWhiteSpace(originalText) && originalText.Length < 120)
             {
@@ -49,6 +55,18 @@ namespace SpeedTranslate
             {
                 OriginalTextBlock.Visibility = Visibility.Collapsed;
             }
+
+            // 初始化语种下拉框选中状态（解绑后再绑定）
+            LanguageComboBox.SelectionChanged -= LanguageComboBox_SelectionChanged;
+            foreach (System.Windows.Controls.ComboBoxItem item in LanguageComboBox.Items)
+            {
+                if (item.Tag?.ToString() == _config.TargetLanguage)
+                {
+                    LanguageComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+            LanguageComboBox.SelectionChanged += LanguageComboBox_SelectionChanged;
 
             // 初始化位置（在 Show 之前，先移出屏幕外以防一瞬间的闪烁，待大小计算后再精确定位）
             this.Left = -9999;
@@ -190,6 +208,44 @@ namespace SpeedTranslate
             _translatedText = translatedText;
             TranslatedTextBlock.Text = translatedText;
             PositionAtMouse();
+        }
+
+        /// <summary>
+        /// 切换翻译语种事件：同步全局配置，并自动重新触发翻译展示
+        /// </summary>
+        private async void LanguageComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_config == null || _llmService == null || string.IsNullOrWhiteSpace(_originalText)) return;
+
+            if (LanguageComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem item)
+            {
+                string targetLang = item.Tag?.ToString() ?? "Auto";
+                if (_config.TargetLanguage == targetLang) return; // 没变则不重复请求
+
+                // 1. 同步修改全局配置并持久化保存
+                _config.TargetLanguage = targetLang;
+                ConfigManager.SaveConfig(_config);
+
+                // 2. 双向联动：通知主界面 ComboBox 同步更改选中项
+                if (System.Windows.Application.Current.MainWindow is MainWindow mainWin)
+                {
+                    mainWin.SyncLanguageSelection(targetLang);
+                }
+
+                // 3. UI 展现正在重新翻译
+                TranslatedTextBlock.Text = "翻译中...";
+
+                try
+                {
+                    // 4. 重新异步请求翻译
+                    string translatedText = await _llmService.TranslateAsync(_originalText, _config);
+                    UpdateTranslatedText(translatedText);
+                }
+                catch (Exception ex)
+                {
+                    UpdateTranslatedText($"翻译失败: {ex.Message}");
+                }
+            }
         }
     }
 }

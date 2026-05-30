@@ -308,9 +308,6 @@ namespace SpeedTranslate
             TooltipHotkeyTextBox.Text = _tooltipHotkeyText;
         }
 
-        /// <summary>
-        /// 目标语种下拉框变化事件：用于智能展示/隐藏英文说话风格面板
-        /// </summary>
         private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (StyleSettingsPanel == null || LanguageComboBox == null) return;
@@ -320,6 +317,22 @@ namespace SpeedTranslate
                 string tag = selectedItem.Tag?.ToString() ?? "";
                 // 如果目标是英语，就显示风格配置项，否则隐藏
                 StyleSettingsPanel.Visibility = tag == "English" ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>
+        /// 同步主界面的语种下拉框选中状态（由弹窗切换语种时调用）
+        /// </summary>
+        public void SyncLanguageSelection(string targetLanguage)
+        {
+            if (LanguageComboBox == null) return;
+            foreach (ComboBoxItem item in LanguageComboBox.Items)
+            {
+                if (item.Tag?.ToString() == targetLanguage)
+                {
+                    LanguageComboBox.SelectedItem = item;
+                    break;
+                }
             }
         }
 
@@ -700,11 +713,10 @@ namespace SpeedTranslate
                 }
 
                 // 2. 立即创建并展示弹窗悬浮框，显示“翻译中...”
-                string selectedModelName = _config.SelectedModel;
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     tooltipWin = new TranslationTooltipWindow();
-                    tooltipWin.ShowTooltip(sourceText, "翻译中...", selectedModelName);
+                    tooltipWin.ShowTooltip(sourceText, "翻译中...", _config, _llmService);
                 });
 
                 // 3. 异步调用 API 大模型进行翻译
