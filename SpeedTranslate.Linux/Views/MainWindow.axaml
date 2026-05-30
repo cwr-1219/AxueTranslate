@@ -122,16 +122,10 @@
 
                                 <StackPanel Grid.Row="2" Grid.Column="0"
                                             IsVisible="{Binding IsStyleVisible}">
-                                    <TextBlock Text="英文说话风格" Classes="Label" />
+                                    <TextBlock Text="{Binding StyleLabel}" Classes="Label" />
                                     <ComboBox Classes="Modern" HorizontalAlignment="Stretch"
-                                              SelectedIndex="{Binding StyleIndex, Mode=TwoWay}">
-                                        <ComboBoxItem Content="默认标准翻译" />
-                                        <ComboBoxItem Content="🇺🇸 日常美式口语" />
-                                        <ComboBoxItem Content="🇬🇧 地道英式口语" />
-                                        <ComboBoxItem Content="💼 职场商务英语" />
-                                        <ComboBoxItem Content="📝 雅思学术英语" />
-                                        <ComboBoxItem Content="⚡ 极简流利表达" />
-                                    </ComboBox>
+                                              ItemsSource="{Binding StyleOptions}"
+                                              SelectedIndex="{Binding StyleIndex, Mode=TwoWay}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="2" Grid.Column="2" VerticalAlignment="Center">

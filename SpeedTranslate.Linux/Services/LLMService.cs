@@ -32,19 +32,7 @@ public class LLMService
             apiUrl = apiUrl.TrimEnd('/') + "/chat/completions";
 
         var targetLangPrompt = GetTargetLanguagePrompt(config.TargetLanguage);
-        var stylePrompt = "";
-        if (config.TargetLanguage == "English" && config.TranslationStyle != "Standard")
-        {
-            stylePrompt = config.TranslationStyle switch
-            {
-                "AmericanColloquial" => "Translation style: Casual American English. Use natural local slang, typical idioms, and contractions (like 'gonna', 'wanna', 'I'd', 'you're') suitable for informal daily messaging.",
-                "BritishColloquial" => "Translation style: Conversational British English. Use natural British expressions, phrasing, and idioms suitable for daily UK messaging.",
-                "Business" => "Translation style: Professional Business English. Use polite, professional, and formal vocabulary suitable for workplace communications and emails.",
-                "Academic" => "Translation style: Academic English. Use high-level vocabulary, varied sentence structures, and a formal tone suitable for IELTS or writing essays.",
-                "Concise" => "Translation style: Concise and fluent English. Keep it as short and clear as possible. Eliminate redundancy, use direct and natural phrasing.",
-                _ => "",
-            };
-        }
+        var stylePrompt = GetStylePrompt(config.TargetLanguage, config.TranslationStyle);
 
         var systemPrompt = $@"You are a professional and accurate translator. Translate the text provided by the user into the target language.
 
@@ -144,6 +132,45 @@ CRITICAL RULES:
         "Spanish" => "Spanish (Español).",
         _ => "Chinese.",
     };
+
+    private static string GetStylePrompt(string targetLang, string style)
+    {
+        if (targetLang == "Auto" || style == "Standard")
+            return "";
+
+        if (targetLang == "English")
+        {
+            return style switch
+            {
+                "AmericanColloquial" => "Translation style: Casual American English. Use natural local slang, typical idioms, and contractions (like 'gonna', 'wanna', 'I'd', 'you're') suitable for informal daily messaging.",
+                "BritishColloquial" => "Translation style: Conversational British English. Use natural British expressions, phrasing, and idioms suitable for daily UK messaging.",
+                "Business" => "Translation style: Professional Business English. Use polite, professional, and formal vocabulary suitable for workplace communications and emails.",
+                "Academic" => "Translation style: Academic English. Use high-level vocabulary, varied sentence structures, and a formal tone suitable for IELTS or writing essays.",
+                "Concise" => "Translation style: Concise and fluent English. Keep it as short and clear as possible. Eliminate redundancy, use direct and natural phrasing.",
+                _ => "",
+            };
+        }
+
+        var langName = targetLang switch
+        {
+            "Chinese" => "Chinese (简体中文)",
+            "Japanese" => "Japanese (日本語)",
+            "Korean" => "Korean (한국어)",
+            "French" => "French (Français)",
+            "German" => "German (Deutsch)",
+            "Spanish" => "Spanish (Español)",
+            _ => targetLang,
+        };
+
+        return style switch
+        {
+            "Colloquial" => $"Translation style: Casual conversational {langName}. Use natural everyday phrasing, common idioms, and informal vocabulary suitable for daily chats and instant messaging.",
+            "Business" => $"Translation style: Professional business {langName}. Use polite, formal vocabulary suitable for workplace communications, emails, and meetings. For Japanese/Korean, prefer the appropriate honorific register (敬語 / 존댓말).",
+            "Academic" => $"Translation style: Formal academic / written {langName}. Use precise vocabulary, varied sentence structures, and a formal written tone suitable for papers, reports, or essays.",
+            "Concise" => $"Translation style: Concise fluent {langName}. Keep it as short and clear as possible. Eliminate redundancy, use direct phrasing.",
+            _ => "",
+        };
+    }
 
     private static string CleanTranslatedText(string text)
     {
