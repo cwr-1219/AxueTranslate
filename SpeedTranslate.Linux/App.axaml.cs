@@ -14,6 +14,7 @@ public partial class App : Application
 {
     private MainWindow? _mainWindow;
     private TranslationStatusWindow? _statusWindow;
+    private TranslationTooltipWindow? _tooltipWindow;
     private MainWindowViewModel? _vm;
     private GlobalHotkeyService? _hotkey;
     private TrayIconService? _tray;
@@ -39,12 +40,16 @@ public partial class App : Application
             desktop.MainWindow = _mainWindow;
 
             _statusWindow = new TranslationStatusWindow();
+            _tooltipWindow = new TranslationTooltipWindow();
             _coordinator = new TranslationCoordinator(_vm, _statusWindow);
+            _coordinator.SetTooltipWindow(_tooltipWindow);
 
             // 全局热键
             _hotkey = new GlobalHotkeyService();
             ReregisterHotkey();
+            ReregisterTooltipHotkey();
             _vm.HotkeyChanged += (_, _) => ReregisterHotkey();
+            _vm.TooltipHotkeyChanged += (_, _) => ReregisterTooltipHotkey();
             _hotkey.Start();
 
             // 托盘
@@ -66,8 +71,15 @@ public partial class App : Application
     private void ReregisterHotkey()
     {
         if (_hotkey == null || _vm == null || _coordinator == null) return;
-        DebugLog.Write($"[App] Register hotkey: {_vm.Hotkey.DisplayText} (mods={_vm.Hotkey.Modifiers}, key={_vm.Hotkey.Key})");
+        DebugLog.Write($"[App] Register hotkey: {_vm.Hotkey.DisplayText}");
         _hotkey.Register(_vm.Hotkey, () => _coordinator.Trigger());
+    }
+
+    private void ReregisterTooltipHotkey()
+    {
+        if (_hotkey == null || _vm == null || _coordinator == null) return;
+        DebugLog.Write($"[App] Register tooltip hotkey: {_vm.TooltipHotkey.DisplayText}");
+        _hotkey.Register2(_vm.TooltipHotkey, () => _coordinator.TriggerTooltip());
     }
 
     private void CheckSessionType()

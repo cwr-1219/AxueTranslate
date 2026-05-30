@@ -110,7 +110,7 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="2">
-                                    <TextBlock Text="全局快捷键 (点击录入)" Classes="Label" />
+                                    <TextBlock Text="替换热键 (点击录入)" Classes="Label" />
                                     <TextBox Name="HotkeyTextBox"
                                              Classes="Input"
                                              IsReadOnly="True"
@@ -118,20 +118,22 @@
                                              TextAlignment="Center"
                                              Text="{Binding HotkeyDisplay, Mode=OneWay}"
                                              KeyDown="HotkeyTextBox_KeyDown" />
+                                    <TextBlock Text="浮窗热键 (点击录入)" Classes="Label" Margin="0,8,0,0" />
+                                    <TextBox Name="TooltipHotkeyTextBox"
+                                             Classes="Input"
+                                             IsReadOnly="True"
+                                             Cursor="Hand"
+                                             TextAlignment="Center"
+                                             Text="{Binding TooltipHotkeyDisplay, Mode=OneWay}"
+                                             KeyDown="TooltipHotkeyTextBox_KeyDown" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="2" Grid.Column="0"
                                             IsVisible="{Binding IsStyleVisible}">
-                                    <TextBlock Text="英文说话风格" Classes="Label" />
+                                    <TextBlock Text="{Binding StyleLabel}" Classes="Label" />
                                     <ComboBox Classes="Modern" HorizontalAlignment="Stretch"
-                                              SelectedIndex="{Binding StyleIndex, Mode=TwoWay}">
-                                        <ComboBoxItem Content="默认标准翻译" />
-                                        <ComboBoxItem Content="🇺🇸 日常美式口语" />
-                                        <ComboBoxItem Content="🇬🇧 地道英式口语" />
-                                        <ComboBoxItem Content="💼 职场商务英语" />
-                                        <ComboBoxItem Content="📝 雅思学术英语" />
-                                        <ComboBoxItem Content="⚡ 极简流利表达" />
-                                    </ComboBox>
+                                              ItemsSource="{Binding StyleOptions}"
+                                              SelectedIndex="{Binding StyleIndex, Mode=TwoWay}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="2" Grid.Column="2" VerticalAlignment="Center">

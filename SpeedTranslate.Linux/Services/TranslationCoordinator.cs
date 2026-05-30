@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Threading;
 using SpeedTranslate.Linux.Models;
 using SpeedTranslate.Linux.ViewModels;
@@ -15,6 +16,7 @@ public sealed class TranslationCoordinator
 {
     private readonly MainWindowViewModel _vm;
     private readonly TranslationStatusWindow _statusWindow;
+    private TranslationTooltipWindow? _tooltipWindow;
     private readonly LLMService _llm = new();
     private readonly InputSimulator _input = new();
     private readonly ClipboardService _clipboard = new();
@@ -26,10 +28,107 @@ public sealed class TranslationCoordinator
         _statusWindow = statusWindow;
     }
 
+    public void SetTooltipWindow(TranslationTooltipWindow tooltipWindow)
+    {
+        _tooltipWindow = tooltipWindow;
+    }
+
     public void Trigger()
     {
-        // 在后台线程跑流程，避免阻塞热键钩子
         _ = Task.Run(RunFlowAsync);
+    }
+
+    public void TriggerTooltip()
+    {
+        _ = Task.Run(RunTooltipFlowAsync);
+    }
+
+    private async Task RunTooltipFlowAsync()
+    {
+        if (Interlocked.Exchange(ref _isTranslating, 1) == 1)
+        {
+            DebugLog.Write("[Coord] tooltip: already translating, skip");
+            return;
+        }
+
+        DebugLog.Write("[Coord] tooltip flow start");
+        try
+        {
+            var config = _vm.CurrentConfig;
+            if (!config.EnableSelectionMode && !config.EnableAllTextMode)
+            {
+                DebugLog.Write("[Coord] tooltip: both modes disabled, exit");
+                return;
+            }
+
+            var (cx, cy) = X11Mouse.GetPosition();
+            var cursorPos = new Avalonia.PixelPoint(cx, cy);
+            DebugLog.Write($"[Coord] tooltip: cursor at ({cx},{cy})");
+
+            // 显示 loading 状态窗
+            await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.ShowAtCursor(cx, cy));
+
+            string sourceText = "";
+
+            // 划词模式：读 PRIMARY selection
+            if (config.EnableSelectionMode)
+            {
+                var primary = await _clipboard.GetPrimarySelectionAsync();
+                DebugLog.Write($"[Coord] tooltip: PRIMARY (len={primary.Length}): {Trunc(primary)}");
+                if (!string.IsNullOrWhiteSpace(primary))
+                    sourceText = primary;
+            }
+
+            // 全选模式
+            if (string.IsNullOrWhiteSpace(sourceText) && config.EnableAllTextMode)
+            {
+                var targetWindow = await InputSimulator.GetActiveWindowIdAsync();
+                var marker = $"__AXUETRANSLATE_EMPTY_MARKER_{Guid.NewGuid()}__";
+                await _clipboard.SetClipboardTextAsync(marker);
+                await _input.SendSelectAllAsync(targetWindow);
+                await _input.SendCopyAsync(targetWindow);
+                var read = await _clipboard.GetClipboardTextAsync();
+                DebugLog.Write($"[Coord] tooltip: allText (len={read.Length}): {Trunc(read)}");
+                if (!string.IsNullOrEmpty(read) && read != marker)
+                    sourceText = read;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceText))
+            {
+                DebugLog.Write("[Coord] tooltip: no source text, hide and exit");
+                await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.HideWithFade());
+                return;
+            }
+
+            DebugLog.Write($"[Coord] tooltip: calling LLM (lang={config.TargetLanguage})");
+            var translated = await _llm.TranslateAsync(sourceText, config);
+            DebugLog.Write($"[Coord] tooltip: LLM returned (len={translated.Length}): {Trunc(translated)}");
+
+            // 隐藏 loading 窗，弹出浮窗
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _statusWindow.HideWithFade();
+                if (_tooltipWindow != null)
+                {
+                    _tooltipWindow.ShowTooltip(
+                        sourceText, translated, config, _llm, _input, cursorPos);
+                }
+            });
+
+            DebugLog.Write("[Coord] tooltip flow OK");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write($"[Coord] tooltip exception: {ex.GetType().Name}: {ex.Message}");
+            ConfigManager.WriteErrorLog("TooltipFlow", ex);
+            var friendly = MapErrorMessage(ex.Message);
+            await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.ShowError(friendly));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isTranslating, 0);
+            DebugLog.Write("[Coord] tooltip flow end");
+        }
     }
 
     private async Task RunFlowAsync()

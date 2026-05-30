@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,12 +24,23 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private int _languageIndex;
     [ObservableProperty] private int _styleIndex;
     [ObservableProperty] private bool _isStyleVisible;
+    [ObservableProperty] private string _styleLabel = "说话风格";
+
+    public ObservableCollection<string> StyleOptions { get; } = new();
+    private (string Display, string Tag)[] _currentStyleSet = Array.Empty<(string, string)>();
 
     [ObservableProperty] private bool _enableSelectionMode;
     [ObservableProperty] private bool _enableAllTextMode;
 
     [ObservableProperty] private HotkeyDescriptor _hotkey = new();
     public string HotkeyDisplay => Hotkey.DisplayText;
+
+    [ObservableProperty] private HotkeyDescriptor _tooltipHotkey = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "F",
+    };
+    public string TooltipHotkeyDisplay => TooltipHotkey.DisplayText;
 
     [ObservableProperty] private bool _isFetchingModels;
     [ObservableProperty] private string _fetchModelsButtonText = "切换模型";
@@ -37,12 +49,29 @@ public partial class MainWindowViewModel : ViewModelBase
     public event EventHandler<string>? RequestShowError;
     public event EventHandler<List<string>>? RequestShowModelPicker;
     public event EventHandler<HotkeyDescriptor>? HotkeyChanged;
+    public event EventHandler<HotkeyDescriptor>? TooltipHotkeyChanged;
 
     private static readonly string[] LanguageTags =
         { "Auto", "English", "Chinese", "Japanese", "Korean", "French", "German", "Spanish" };
 
-    private static readonly string[] StyleTags =
-        { "Standard", "AmericanColloquial", "BritishColloquial", "Business", "Academic", "Concise" };
+    private static readonly (string Display, string Tag)[] EnglishStyleOptions =
+    {
+        ("默认标准翻译",      "Standard"),
+        ("🇺🇸 日常美式口语",   "AmericanColloquial"),
+        ("🇬🇧 地道英式口语",   "BritishColloquial"),
+        ("💼 职场商务英语",     "Business"),
+        ("📝 雅思学术英语",     "Academic"),
+        ("⚡ 极简流利表达",     "Concise"),
+    };
+
+    private static readonly (string Display, string Tag)[] GenericStyleOptions =
+    {
+        ("默认标准翻译",  "Standard"),
+        ("💬 日常口语",   "Colloquial"),
+        ("💼 职场商务",   "Business"),
+        ("📝 学术书面",   "Academic"),
+        ("⚡ 极简流利",   "Concise"),
+    };
 
     public MainWindowViewModel()
     {
@@ -67,16 +96,19 @@ public partial class MainWindowViewModel : ViewModelBase
         var langIdx = Array.IndexOf(LanguageTags, config.TargetLanguage);
         LanguageIndex = langIdx < 0 ? 0 : langIdx;
 
-        var styleIdx = Array.IndexOf(StyleTags, config.TranslationStyle);
-        StyleIndex = styleIdx < 0 ? 0 : styleIdx;
+        RefreshStyleOptionsForLanguage(LanguageTags[LanguageIndex], config.TranslationStyle);
 
-        IsStyleVisible = config.TargetLanguage == "English";
+        IsStyleVisible = LanguageTags[LanguageIndex] != "Auto";
+        StyleLabel = BuildStyleLabel(LanguageTags[LanguageIndex]);
 
         EnableSelectionMode = config.EnableSelectionMode;
         EnableAllTextMode = config.EnableAllTextMode;
 
         Hotkey = config.Hotkey;
         OnPropertyChanged(nameof(HotkeyDisplay));
+
+        TooltipHotkey = config.TooltipHotkey;
+        OnPropertyChanged(nameof(TooltipHotkeyDisplay));
     }
 
     partial void OnSelectedModelIndexChanged(int oldValue, int newValue)
@@ -95,13 +127,53 @@ public partial class MainWindowViewModel : ViewModelBase
     partial void OnLanguageIndexChanged(int value)
     {
         if (value < 0 || value >= LanguageTags.Length) return;
-        IsStyleVisible = LanguageTags[value] == "English";
+        var newLang = LanguageTags[value];
+
+        var preserveTag = (StyleIndex >= 0 && StyleIndex < _currentStyleSet.Length)
+            ? _currentStyleSet[StyleIndex].Tag
+            : "Standard";
+
+        RefreshStyleOptionsForLanguage(newLang, preserveTag);
+
+        IsStyleVisible = newLang != "Auto";
+        StyleLabel = BuildStyleLabel(newLang);
     }
+
+    private void RefreshStyleOptionsForLanguage(string langTag, string preserveTag)
+    {
+        var newSet = langTag == "English" ? EnglishStyleOptions : GenericStyleOptions;
+        _currentStyleSet = newSet;
+
+        StyleOptions.Clear();
+        foreach (var opt in newSet)
+            StyleOptions.Add(opt.Display);
+
+        var idx = Array.FindIndex(newSet, o => o.Tag == preserveTag);
+        StyleIndex = idx < 0 ? 0 : idx;
+    }
+
+    private static string BuildStyleLabel(string langTag) => langTag switch
+    {
+        "English"  => "英文说话风格",
+        "Chinese"  => "中文表达风格",
+        "Japanese" => "日文说话风格",
+        "Korean"   => "韩文说话风格",
+        "French"   => "法文说话风格",
+        "German"   => "德文说话风格",
+        "Spanish"  => "西班牙文说话风格",
+        _          => "说话风格",
+    };
 
     partial void OnHotkeyChanged(HotkeyDescriptor value)
     {
         OnPropertyChanged(nameof(HotkeyDisplay));
         HotkeyChanged?.Invoke(this, value);
+    }
+
+    partial void OnTooltipHotkeyChanged(HotkeyDescriptor value)
+    {
+        OnPropertyChanged(nameof(TooltipHotkeyDisplay));
+        TooltipHotkeyChanged?.Invoke(this, value);
     }
 
     private void LoadModelInputsFromConfig(string modelKey)
@@ -153,16 +225,24 @@ public partial class MainWindowViewModel : ViewModelBase
         SaveModelInputsToConfig(_lastSelectedModelKey);
         _config.SelectedModel = _lastSelectedModelKey;
         _config.TargetLanguage = LanguageTags[Math.Clamp(LanguageIndex, 0, LanguageTags.Length - 1)];
-        _config.TranslationStyle = StyleTags[Math.Clamp(StyleIndex, 0, StyleTags.Length - 1)];
+        _config.TranslationStyle = (_currentStyleSet.Length > 0 && StyleIndex >= 0 && StyleIndex < _currentStyleSet.Length)
+            ? _currentStyleSet[StyleIndex].Tag
+            : "Standard";
         _config.EnableSelectionMode = EnableSelectionMode;
         _config.EnableAllTextMode = EnableAllTextMode;
         _config.Hotkey = Hotkey;
+        _config.TooltipHotkey = TooltipHotkey;
         return _config;
     }
 
     public void ApplyHotkey(HotkeyModifiers modifiers, string keyName)
     {
         Hotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
+    }
+
+    public void ApplyTooltipHotkey(HotkeyModifiers modifiers, string keyName)
+    {
+        TooltipHotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
     }
 
     public void ApplyChosenModelName(string modelId)

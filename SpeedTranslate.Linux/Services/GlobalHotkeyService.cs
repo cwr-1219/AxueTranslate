@@ -11,6 +11,8 @@ public sealed class GlobalHotkeyService : IDisposable
     private TaskPoolGlobalHook? _hook;
     private HotkeyDescriptor? _registered;
     private Action? _callback;
+    private HotkeyDescriptor? _registered2;
+    private Action? _callback2;
 
     private bool _ctrl, _alt, _shift, _meta;
     private bool _suppressed;
@@ -21,6 +23,12 @@ public sealed class GlobalHotkeyService : IDisposable
     {
         _registered = hotkey;
         _callback = callback;
+    }
+
+    public void Register2(HotkeyDescriptor hotkey, Action callback)
+    {
+        _registered2 = hotkey;
+        _callback2 = callback;
     }
 
     public void Start()
@@ -88,22 +96,43 @@ public sealed class GlobalHotkeyService : IDisposable
         if (_shift) pressedMods |= HotkeyModifiers.Shift;
         if (_meta) pressedMods |= HotkeyModifiers.Meta;
 
-        if (pressedMods != _registered.Modifiers) return;
-
         var avKey = MapKeyCodeToAvaloniaKeyName(k);
         if (avKey == null) return;
-        if (!string.Equals(avKey, _registered.Key, StringComparison.OrdinalIgnoreCase)) return;
 
         if (_suppressed) return;
-        _suppressed = true;
-        try
+
+        // 主热键
+        if (pressedMods == _registered.Modifiers &&
+            string.Equals(avKey, _registered.Key, StringComparison.OrdinalIgnoreCase))
         {
-            DebugLog.Write($"[Hook] hotkey matched: {_registered.DisplayText}");
-            _callback.Invoke();
+            _suppressed = true;
+            try
+            {
+                DebugLog.Write($"[Hook] hotkey matched: {_registered.DisplayText}");
+                _callback.Invoke();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"[Hook] callback exception: {ex.Message}");
+            }
+            return;
         }
-        catch (Exception ex)
+
+        // 浮窗热键
+        if (_registered2 != null && _callback2 != null &&
+            pressedMods == _registered2.Modifiers &&
+            string.Equals(avKey, _registered2.Key, StringComparison.OrdinalIgnoreCase))
         {
-            DebugLog.Write($"[Hook] callback exception: {ex.Message}");
+            _suppressed = true;
+            try
+            {
+                DebugLog.Write($"[Hook] tooltip hotkey matched: {_registered2.DisplayText}");
+                _callback2.Invoke();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"[Hook] tooltip callback exception: {ex.Message}");
+            }
         }
     }
 
