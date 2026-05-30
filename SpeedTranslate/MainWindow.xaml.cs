@@ -117,6 +117,25 @@ namespace SpeedTranslate
             }
 
             LoadModelConfigToUI(_config.SelectedModel);
+            
+            // 初始化重命名和删除按钮的可用性状态
+            bool isBuiltIn = _config.SelectedModel == "DeepSeek 大模型" || 
+                             _config.SelectedModel == "小米大模型" || 
+                             _config.SelectedModel == "OpenAI (ChatGPT)" || 
+                             _config.SelectedModel == "Anthropic (Claude)" || 
+                             _config.SelectedModel == "Google (Gemini)" || 
+                             _config.SelectedModel == "自定义模型";
+            if (DeleteConfigButton != null)
+            {
+                DeleteConfigButton.IsEnabled = !isBuiltIn;
+                DeleteConfigButton.Opacity = isBuiltIn ? 0.4 : 1.0;
+            }
+            if (RenameConfigButton != null)
+            {
+                RenameConfigButton.IsEnabled = !isBuiltIn;
+                RenameConfigButton.Opacity = isBuiltIn ? 0.4 : 1.0;
+            }
+
             ModelSelectComboBox.SelectionChanged += ModelSelectComboBox_SelectionChanged;
 
             // 5. 注册全局热键
@@ -241,7 +260,7 @@ namespace SpeedTranslate
             // 3. 将新选中的模型配置加载到 UI 输入框
             LoadModelConfigToUI(selectedModel);
 
-            // 控制删除按钮是否可用：内置模型不允许删除
+            // 控制重命名按钮和删除按钮是否可用：内置模型不允许重命名和删除
             if (DeleteConfigButton != null)
             {
                 bool isBuiltIn = selectedModel == "DeepSeek 大模型" || 
@@ -252,6 +271,12 @@ namespace SpeedTranslate
                                  selectedModel == "自定义模型";
                 DeleteConfigButton.IsEnabled = !isBuiltIn;
                 DeleteConfigButton.Opacity = isBuiltIn ? 0.4 : 1.0;
+                
+                if (RenameConfigButton != null)
+                {
+                    RenameConfigButton.IsEnabled = !isBuiltIn;
+                    RenameConfigButton.Opacity = isBuiltIn ? 0.4 : 1.0;
+                }
             }
         }
 
@@ -938,6 +963,92 @@ namespace SpeedTranslate
 
             // 隐藏 Overlay
             ModalOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// 点击重命名模型配置按钮：弹出重命名模态框
+        /// </summary>
+        private void RenameConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (ModelSelectComboBox.SelectedItem is not ComboBoxItem selectedItem || selectedItem.Content == null) return;
+            string selectedDisplayName = selectedItem.Content.ToString();
+            
+            RenameConfigNameTextBox.Text = selectedDisplayName;
+            RenameModalOverlay.Visibility = Visibility.Visible;
+            RenameConfigNameTextBox.Focus();
+            RenameConfigNameTextBox.SelectAll();
+        }
+
+        /// <summary>
+        /// 取消修改模型配置名称
+        /// </summary>
+        private void CancelRenameModalButton_Click(object sender, RoutedEventArgs e)
+        {
+            RenameModalOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// 确定修改模型配置名称
+        /// </summary>
+        private void ConfirmRenameModalButton_Click(object sender, RoutedEventArgs e)
+        {
+            string newName = RenameConfigNameTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                MessageBox.Show("配置名称不能为空！", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (ModelSelectComboBox.SelectedItem is not ComboBoxItem selectedItem || selectedItem.Content == null) return;
+            string oldName = selectedItem.Content.ToString();
+
+            if (newName.Equals(oldName, StringComparison.OrdinalIgnoreCase))
+            {
+                RenameModalOverlay.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // 检查新名称是否与其他配置重名
+            var exists = _config.ModelConfigs.Exists(m => m.DisplayName.Equals(newName, StringComparison.OrdinalIgnoreCase));
+            if (exists)
+            {
+                MessageBox.Show($"已存在名称为 [{newName}] 的大模型配置，请使用其他名称。", "名称已存在", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // 执行修改
+            var modelConfig = _config.ModelConfigs.Find(m => m.DisplayName == oldName);
+            if (modelConfig != null)
+            {
+                modelConfig.DisplayName = newName;
+            }
+
+            // 更新当前选中
+            _config.SelectedModel = newName;
+            _lastSelectedModel = newName;
+
+            // 刷新 ComboBox 并保持选中状态
+            ModelSelectComboBox.SelectionChanged -= ModelSelectComboBox_SelectionChanged;
+            
+            RefreshModelSelectComboBox();
+
+            // 重新选中修改后的配置
+            for (int i = 0; i < ModelSelectComboBox.Items.Count; i++)
+            {
+                if (ModelSelectComboBox.Items[i] is ComboBoxItem item && item.Content?.ToString() == newName)
+                {
+                    ModelSelectComboBox.SelectedIndex = i;
+                    break;
+                }
+            }
+
+            ModelSelectComboBox.SelectionChanged += ModelSelectComboBox_SelectionChanged;
+
+            // 隐藏模态框
+            RenameModalOverlay.Visibility = Visibility.Collapsed;
+
+            // 保存配置
+            ConfigManager.SaveConfig(_config);
         }
 
         /// <summary>
