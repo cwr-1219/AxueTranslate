@@ -491,6 +491,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="12" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="12" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -515,7 +517,7 @@
 
                             <!-- 第一行右侧：全局快捷键 -->
                             <StackPanel Grid.Row="0" Grid.Column="2">
-                                <TextBlock Text="全局快捷键 (点击录入)" Style="{StaticResource LabelStyle}" />
+                                <TextBlock Text="全局替换快捷键 (点击录入)" Style="{StaticResource LabelStyle}" />
                                 <TextBox x:Name="HotkeyTextBox" 
                                          Style="{StaticResource InputTextBoxStyle}" 
                                          IsReadOnly="True"
@@ -540,7 +542,7 @@
 
                             <!-- 第二行右侧：快捷键反应模式配置 -->
                             <StackPanel Grid.Row="2" Grid.Column="2" VerticalAlignment="Center">
-                                <TextBlock Text="触发模式" Style="{StaticResource LabelStyle}" />
+                                <TextBlock Text="替换触发模式" Style="{StaticResource LabelStyle}" />
                                 <CheckBox x:Name="SelectionModeCheckBox" 
                                           Content="划词翻译 (选中文本触发)" 
                                           Foreground="#E2E8F0" 
@@ -552,6 +554,28 @@
                                            Foreground="#E2E8F0" 
                                            FontSize="11" 
                                            IsChecked="True" />
+                            </StackPanel>
+
+                            <!-- 第三行左侧：启用划词弹窗模式 -->
+                            <StackPanel Grid.Row="4" Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="划词弹窗模式 (仅翻译不替换)" Style="{StaticResource LabelStyle}" />
+                                <CheckBox x:Name="TooltipModeCheckBox" 
+                                          Content="启用划词弹窗模式" 
+                                          Foreground="#E2E8F0" 
+                                          FontSize="11" 
+                                          IsChecked="True" />
+                            </StackPanel>
+
+                            <!-- 第三行右侧：弹窗全局快捷键 -->
+                            <StackPanel Grid.Row="4" Grid.Column="2">
+                                <TextBlock Text="弹窗全局快捷键 (点击录入)" Style="{StaticResource LabelStyle}" />
+                                <TextBox x:Name="TooltipHotkeyTextBox" 
+                                         Style="{StaticResource InputTextBoxStyle}" 
+                                         IsReadOnly="True"
+                                         Text="Ctrl + Alt + F" 
+                                         Cursor="Hand"
+                                         TextAlignment="Center"
+                                         PreviewKeyDown="TooltipHotkeyTextBox_PreviewKeyDown" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>

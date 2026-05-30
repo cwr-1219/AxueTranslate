@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Windows.Input;
 
 namespace SpeedTranslate
 {
@@ -20,6 +21,16 @@ namespace SpeedTranslate
                 {
                     string json = File.ReadAllText(ConfigPath);
                     var config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions);
+                    if (config != null)
+                    {
+                        // 兼容老配置：如果老配置中没有设置过弹窗快捷键，则回填默认值
+                        if (config.TooltipHotkeyKey == Key.None && string.IsNullOrEmpty(config.TooltipHotkeyText))
+                        {
+                            config.TooltipHotkeyModifiers = ModifierKeys.Control | ModifierKeys.Alt;
+                            config.TooltipHotkeyKey = Key.F;
+                            config.TooltipHotkeyText = "Ctrl + Alt + F";
+                        }
+                    }
                     return config ?? new AppConfig();
                 }
             }

@@ -16,6 +16,7 @@ namespace SpeedTranslate
     public partial class MainWindow : Window
     {
         private const int HOTKEY_ID = 9000;
+        private const int TOOLTIP_HOTKEY_ID = 9001;
         private AppConfig _config = new AppConfig();
         private LLMService _llmService = new LLMService();
         private TrayIconManager? _trayIconManager;
@@ -26,8 +27,14 @@ namespace SpeedTranslate
         private Key _currentKey;
         private string _currentHotkeyText = "";
 
+        // 临时存储用户录入的弹窗快捷键
+        private ModifierKeys _tooltipModifiers;
+        private Key _tooltipKey;
+        private string _tooltipHotkeyText = "";
+
         // 标记是否正在执行翻译，防止重复触发
         private bool _isTranslating = false;
+        private bool _isTooltipTranslating = false;
 
         // 标记是否真的退出程序，若是关闭窗口则只隐藏到托盘
         private bool _isRealExit = false;
@@ -88,6 +95,13 @@ namespace SpeedTranslate
             // 设置触发开关状态
             SelectionModeCheckBox.IsChecked = _config.EnableSelectionMode;
             AllTextModeCheckBox.IsChecked = _config.EnableAllTextMode;
+
+            // 设置划词弹窗模式相关配置
+            _tooltipModifiers = _config.TooltipHotkeyModifiers;
+            _tooltipKey = _config.TooltipHotkeyKey;
+            _tooltipHotkeyText = _config.TooltipHotkeyText;
+            TooltipHotkeyTextBox.Text = _tooltipHotkeyText;
+            TooltipModeCheckBox.IsChecked = _config.EnableTooltipMode;
 
             // 根据初始语种控制英语风格面板显隐
             StyleSettingsPanel.Visibility = _config.TargetLanguage == "English" ? Visibility.Visible : Visibility.Collapsed;
@@ -157,11 +171,21 @@ namespace SpeedTranslate
         /// </summary>
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (msg == HotkeyHelper.WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+            if (msg == HotkeyHelper.WM_HOTKEY)
             {
-                // 触发快捷键，异步执行翻译替换
-                TriggerTranslationFlow();
-                handled = true;
+                int id = wParam.ToInt32();
+                if (id == HOTKEY_ID)
+                {
+                    // 触发快捷键，异步执行翻译替换
+                    TriggerTranslationFlow();
+                    handled = true;
+                }
+                else if (id == TOOLTIP_HOTKEY_ID)
+                {
+                    // 触发快捷键，异步执行弹窗翻译
+                    TriggerTooltipTranslationFlow();
+                    handled = true;
+                }
             }
             return IntPtr.Zero;
         }
@@ -174,10 +198,25 @@ namespace SpeedTranslate
             var helper = new WindowInteropHelper(this);
             if (helper.Handle == IntPtr.Zero) return;
 
+            // 1. 注册替换热键
             bool success = HotkeyHelper.Register(helper.Handle, HOTKEY_ID, _currentModifiers, _currentKey);
             if (!success)
             {
-                MessageBox.Show($"全局快捷键 [{_currentHotkeyText}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", "热键冲突", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show($"全局替换快捷键 [{_currentHotkeyText}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", "热键冲突", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            // 2. 注册弹窗热键 (如果启用)
+            if (_config.EnableTooltipMode)
+            {
+                bool tooltipSuccess = HotkeyHelper.Register(helper.Handle, TOOLTIP_HOTKEY_ID, _tooltipModifiers, _tooltipKey);
+                if (!tooltipSuccess)
+                {
+                    MessageBox.Show($"全局弹窗快捷键 [{_tooltipHotkeyText}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", "热键冲突", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            else
+            {
+                HotkeyHelper.Unregister(helper.Handle, TOOLTIP_HOTKEY_ID);
             }
         }
 
@@ -223,6 +262,50 @@ namespace SpeedTranslate
 
             _currentHotkeyText = sb.ToString();
             HotkeyTextBox.Text = _currentHotkeyText;
+        }
+
+        /// <summary>
+        /// 弹窗快捷键录入拦截
+        /// </summary>
+        private void TooltipHotkeyTextBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            e.Handled = true; // 阻止默认的文本输入
+
+            // 获取当前按下的键 (处理 SystemKey 如 Alt)
+            Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+            // 忽略单独按下的修饰键本身
+            if (key == Key.LeftCtrl || key == Key.RightCtrl ||
+                key == Key.LeftAlt || key == Key.RightAlt ||
+                key == Key.LeftShift || key == Key.RightShift ||
+                key == Key.LWin || key == Key.RWin)
+            {
+                return;
+            }
+
+            // 获取修饰键
+            ModifierKeys modifiers = Keyboard.Modifiers;
+
+            // 必须带修饰键，或者如果是 F1-F24 功能键允许单按
+            if (modifiers == ModifierKeys.None && !(key >= Key.F1 && key <= Key.F24))
+            {
+                return;
+            }
+
+            // 更新暂存的按键值
+            _tooltipModifiers = modifiers;
+            _tooltipKey = key;
+
+            // 拼接可读快捷键文本
+            StringBuilder sb = new StringBuilder();
+            if ((modifiers & ModifierKeys.Control) != 0) sb.Append("Ctrl + ");
+            if ((modifiers & ModifierKeys.Alt) != 0) sb.Append("Alt + ");
+            if ((modifiers & ModifierKeys.Shift) != 0) sb.Append("Shift + ");
+            if ((modifiers & ModifierKeys.Windows) != 0) sb.Append("Win + ");
+            sb.Append(key.ToString());
+
+            _tooltipHotkeyText = sb.ToString();
+            TooltipHotkeyTextBox.Text = _tooltipHotkeyText;
         }
 
         /// <summary>
@@ -339,10 +422,16 @@ namespace SpeedTranslate
             _config.EnableSelectionMode = SelectionModeCheckBox.IsChecked ?? true;
             _config.EnableAllTextMode = AllTextModeCheckBox.IsChecked ?? true;
 
-            // 保存快捷键
+            // 保存替换快捷键
             _config.HotkeyModifiers = _currentModifiers;
             _config.HotkeyKey = _currentKey;
             _config.HotkeyText = _currentHotkeyText;
+
+            // 保存弹窗快捷键与开关
+            _config.EnableTooltipMode = TooltipModeCheckBox.IsChecked ?? true;
+            _config.TooltipHotkeyModifiers = _tooltipModifiers;
+            _config.TooltipHotkeyKey = _tooltipKey;
+            _config.TooltipHotkeyText = _tooltipHotkeyText;
 
             // 写入本地 config.json
             ConfigManager.SaveConfig(_config);
@@ -556,6 +645,150 @@ namespace SpeedTranslate
                     });
                 }
                 _isTranslating = false;
+            }
+        }
+
+        /// <summary>
+        /// 弹窗翻译模式核心逻辑：触发复制 -> 提取文本 -> 弹窗显示“翻译中” -> 翻译 -> 在弹窗显示结果
+        /// </summary>
+        private async void TriggerTooltipTranslationFlow()
+        {
+            if (_isTooltipTranslating) return;
+            _isTooltipTranslating = true;
+
+            // 1. 备份原剪贴板内容
+            IDataObject? originalClipboardData = null;
+            try
+            {
+                originalClipboardData = Clipboard.GetDataObject();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"备份剪贴板失败: {ex.Message}");
+            }
+
+            TranslationTooltipWindow? tooltipWin = null;
+
+            try
+            {
+                // 生成一个独特的空值检测标记
+                string marker = $"__AXUETRANSLATE_EMPTY_MARKER_{Guid.NewGuid()}__";
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    SetClipboardTextWithRetry(marker);
+                });
+
+                string sourceText = "";
+
+                // 模拟 Ctrl+C 复制
+                await InputHelper.SimulateCopyAsync();
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    string temp = GetClipboardTextWithRetry();
+                    // 只有读取到的内容不为空，且与我们的特定标记不同，才代表用户确实划词复制到了新内容
+                    if (!string.IsNullOrEmpty(temp) && temp != marker)
+                    {
+                        sourceText = temp;
+                    }
+                });
+
+                if (string.IsNullOrWhiteSpace(sourceText))
+                {
+                    // 依然没获取到任何文本，直接退出
+                    _isTooltipTranslating = false;
+                    return;
+                }
+
+                // 2. 立即创建并展示弹窗悬浮框，显示“翻译中...”
+                string selectedModelName = _config.SelectedModel;
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    tooltipWin = new TranslationTooltipWindow();
+                    tooltipWin.ShowTooltip(sourceText, "翻译中...", selectedModelName);
+                });
+
+                // 3. 异步调用 API 大模型进行翻译
+                string translatedText = await _llmService.TranslateAsync(sourceText, _config);
+
+                // 4. 将翻译好的内容更新到弹窗中
+                if (tooltipWin != null)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        tooltipWin.UpdateTranslatedText(translatedText);
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                // 详细记录错误到本地 error.log 供排查
+                WriteErrorLog("弹窗翻译流程执行异常", ex);
+
+                // 根据具体异常特征进行针对性地友好提示
+                string friendlyError = "翻译失败了";
+                string exMsg = ex.Message;
+
+                if (ex is ArgumentException)
+                {
+                    friendlyError = "请先配置 API Key";
+                }
+                else if (exMsg.Contains("CLIPBRD_E_BAD_DATA") || exMsg.Contains("剪贴板") || exMsg.Contains("0x800401D3"))
+                {
+                    friendlyError = "剪贴板繁忙，请重试";
+                }
+                else if (exMsg.Contains("Unauthorized") || (exMsg.Contains("401") && !exMsg.Contains("800401")))
+                {
+                    friendlyError = "API Key 无效 (401)";
+                }
+                else if (exMsg.Contains("404"))
+                {
+                    friendlyError = "模型名或接口不存在(404)";
+                }
+                else if (exMsg.Contains("429"))
+                {
+                    friendlyError = "限流或额度不足 (429)";
+                }
+                else if (exMsg.Contains("500"))
+                {
+                    friendlyError = "服务器内部错误 (500)";
+                }
+                else if (exMsg.Contains("Timeout") || exMsg.Contains("canceled") || exMsg.Contains("时间已到"))
+                {
+                    friendlyError = "网络请求超时";
+                }
+                else
+                {
+                    friendlyError = exMsg.Length > 18 ? exMsg.Substring(0, 16) + ".." : exMsg;
+                }
+
+                if (tooltipWin != null)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        tooltipWin.UpdateTranslatedText($"翻译失败: {friendlyError}");
+                    });
+                }
+            }
+            finally
+            {
+                _isTooltipTranslating = false;
+
+                // 5. 延迟1秒后恢复用户原始剪贴板内容，避免覆盖复制链
+                await Task.Delay(1000);
+                if (originalClipboardData != null)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        try
+                        {
+                            Clipboard.SetDataObject(originalClipboardData, true);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"还原剪贴板失败: {ex.Message}");
+                        }
+                    });
+                }
             }
         }
 

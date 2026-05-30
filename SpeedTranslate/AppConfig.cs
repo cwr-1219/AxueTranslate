@@ -45,9 +45,16 @@ namespace SpeedTranslate
         public bool EnableAllTextMode { get; set; } = true;       // 未选中时翻译全部内容
 
         // 快捷键配置
-        // 默认快捷键：Ctrl + Alt + T
+        // 默认快捷键：Ctrl + Alt + T (翻译替换)
         public ModifierKeys HotkeyModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
         public Key HotkeyKey { get; set; } = Key.T;
         public string HotkeyText { get; set; } = "Ctrl + Alt + T";
+
+        // 划词弹窗模式配置 (仅弹窗，不替换)
+        public bool EnableTooltipMode { get; set; } = true;
+        // 默认快捷键：Ctrl + Alt + F
+        public ModifierKeys TooltipHotkeyModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
+        public Key TooltipHotkeyKey { get; set; } = Key.F;
+        public string TooltipHotkeyText { get; set; } = "Ctrl + Alt + F";
     }
 }
