@@ -75,20 +75,25 @@ namespace SpeedTranslate
                 throw new ArgumentException("API 接口地址和 Key 不能为空，请在设置中配置。");
             }
 
-            // 格式化 BaseUrl，确保有 /chat/completions 终结点
+            // 构建候选 URL 终结点，支持自动 fallback 以兼容不需要 /v1 或需要 /v1 的情况
             apiUrl = apiUrl.Trim();
-            if (!apiUrl.EndsWith("/chat/completions"))
+            var candidateUrls = new System.Collections.Generic.List<string>();
+            if (apiUrl.EndsWith("/chat/completions"))
+            {
+                candidateUrls.Add(apiUrl);
+            }
+            else
             {
                 string tempUrl = apiUrl.TrimEnd('/');
-                // 自建中转站（如 OneAPI / NewAPI / FastGPT）的 API 基准地址通常需要包含 /v1。
-                // 如果用户没有写 /v1，且不是小米官方等特殊地址，我们自动为其补齐 /v1/chat/completions，大大提升容错性！
-                if (!tempUrl.EndsWith("/v1") && !tempUrl.Contains("/v1/") && !tempUrl.Contains("xiaomimimo.com"))
+                if (tempUrl.EndsWith("/v1") || tempUrl.Contains("/v1/") || tempUrl.Contains("xiaomimimo.com"))
                 {
-                    apiUrl = tempUrl + "/v1/chat/completions";
+                    candidateUrls.Add(tempUrl + "/chat/completions");
                 }
                 else
                 {
-                    apiUrl = tempUrl + "/chat/completions";
+                    // 默认优先尝试自建中转站的带 /v1 地址，然后再尝试直连不带 /v1 地址
+                    candidateUrls.Add(tempUrl + "/v1/chat/completions");
+                    candidateUrls.Add(tempUrl + "/chat/completions");
                 }
             }
 
@@ -134,15 +139,52 @@ CRITICAL RULES:
 
             string requestJson = JsonSerializer.Serialize(requestBody);
 
-            // 4. 发送请求
-            using (var request = new HttpRequestMessage(HttpMethod.Post, apiUrl))
+            // 4. 发送请求（带 404 自适应重试）
+            HttpResponseMessage? response = null;
+            string responseContent = "";
+            string lastErrorMsg = "";
+
+            for (int i = 0; i < candidateUrls.Count; i++)
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-                request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+                string currentUrl = candidateUrls[i];
+                try
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Post, currentUrl);
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                    request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-                HttpResponseMessage response = await HttpClient.SendAsync(request);
-                string responseContent = await response.Content.ReadAsStringAsync();
+                    response = await HttpClient.SendAsync(request);
+                    responseContent = await response.Content.ReadAsStringAsync();
 
+                    // 如果返回 404 (NotFound)，且还有其他备选 URL，则自动重试下一个 URL
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound && i < candidateUrls.Count - 1)
+                    {
+                        response.Dispose();
+                        response = null;
+                        continue;
+                    }
+                    
+                    // 其它状态码或请求成功，说明找到了正确的终结点，停止重试
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastErrorMsg = ex.Message;
+                    if (i < candidateUrls.Count - 1)
+                    {
+                        continue;
+                    }
+                    throw;
+                }
+            }
+
+            if (response == null)
+            {
+                throw new Exception($"无法连接到 API 服务: {lastErrorMsg}");
+            }
+
+            using (response)
+            {
                 if (!response.IsSuccessStatusCode)
                 {
                     throw new Exception($"API 请求失败 (HTTP {response.StatusCode}): {responseContent}");
@@ -230,21 +272,67 @@ CRITICAL RULES:
             }
 
             apiUrl = apiUrl.Trim();
-            // 确保 models 终结点正确
-            string modelsUrl = apiUrl;
-            if (modelsUrl.EndsWith("/chat/completions"))
+            string baseApiUrl = apiUrl;
+            if (baseApiUrl.EndsWith("/chat/completions"))
             {
-                modelsUrl = modelsUrl.Substring(0, modelsUrl.Length - "/chat/completions".Length);
+                baseApiUrl = baseApiUrl.Substring(0, baseApiUrl.Length - "/chat/completions".Length);
             }
-            modelsUrl = modelsUrl.TrimEnd('/') + "/models";
+            baseApiUrl = baseApiUrl.TrimEnd('/');
 
-            using (var request = new HttpRequestMessage(HttpMethod.Get, modelsUrl))
+            var candidateModelUrls = new System.Collections.Generic.List<string>();
+            if (baseApiUrl.EndsWith("/v1") || baseApiUrl.Contains("/v1/") || baseApiUrl.Contains("xiaomimimo.com"))
             {
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey.Trim());
+                candidateModelUrls.Add(baseApiUrl + "/models");
+            }
+            else
+            {
+                // 默认优先尝试带 /v1/models 的路径，如果失败再重试 /models 路径以适应各种反代
+                candidateModelUrls.Add(baseApiUrl + "/v1/models");
+                candidateModelUrls.Add(baseApiUrl + "/models");
+            }
 
-                HttpResponseMessage response = await HttpClient.SendAsync(request);
-                string responseContent = await response.Content.ReadAsStringAsync();
+            HttpResponseMessage? response = null;
+            string responseContent = "";
+            string lastErrorMsg = "";
 
+            for (int i = 0; i < candidateModelUrls.Count; i++)
+            {
+                string currentUrl = candidateModelUrls[i];
+                try
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Get, currentUrl);
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey.Trim());
+
+                    response = await HttpClient.SendAsync(request);
+                    responseContent = await response.Content.ReadAsStringAsync();
+
+                    // 如果返回 404 (NotFound)，且还有其他候选路径，则自动重试
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound && i < candidateModelUrls.Count - 1)
+                    {
+                        response.Dispose();
+                        response = null;
+                        continue;
+                    }
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastErrorMsg = ex.Message;
+                    if (i < candidateModelUrls.Count - 1)
+                    {
+                        continue;
+                    }
+                    throw;
+                }
+            }
+
+            if (response == null)
+            {
+                throw new Exception($"无法连接到 API 服务获取模型列表: {lastErrorMsg}");
+            }
+
+            using (response)
+            {
                 if (!response.IsSuccessStatusCode)
                 {
                     throw new Exception($"获取模型失败 (HTTP {response.StatusCode}): {responseContent}");
