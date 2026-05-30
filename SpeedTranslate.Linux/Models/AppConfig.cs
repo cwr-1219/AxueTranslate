@@ -24,4 +24,9 @@ public class AppConfig
     public bool EnableAllTextMode { get; set; } = true;
 
     public HotkeyDescriptor Hotkey { get; set; } = new();
+    public HotkeyDescriptor TooltipHotkey { get; set; } = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "F",
+    };
 }

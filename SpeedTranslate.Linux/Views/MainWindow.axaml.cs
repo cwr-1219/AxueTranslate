@@ -242,15 +242,12 @@ public partial class MainWindow : Window
         e.Handled = true;
         if (_vm == null) return;
 
-        // 忽略仅修饰键
         var key = e.Key;
         if (key is Key.LeftCtrl or Key.RightCtrl or
                    Key.LeftAlt or Key.RightAlt or
                    Key.LeftShift or Key.RightShift or
                    Key.LWin or Key.RWin)
-        {
             return;
-        }
 
         var modifiers = HotkeyModifiers.None;
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control)) modifiers |= HotkeyModifiers.Control;
@@ -258,11 +255,35 @@ public partial class MainWindow : Window
         if (e.KeyModifiers.HasFlag(KeyModifiers.Shift)) modifiers |= HotkeyModifiers.Shift;
         if (e.KeyModifiers.HasFlag(KeyModifiers.Meta)) modifiers |= HotkeyModifiers.Meta;
 
-        // 必须有修饰键，或为 F1-F24 单键
         var isFunction = key >= Key.F1 && key <= Key.F24;
         if (modifiers == HotkeyModifiers.None && !isFunction)
             return;
 
         _vm.ApplyHotkey(modifiers, key.ToString());
+    }
+
+    private void TooltipHotkeyTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        if (_vm == null) return;
+
+        var key = e.Key;
+        if (key is Key.LeftCtrl or Key.RightCtrl or
+                   Key.LeftAlt or Key.RightAlt or
+                   Key.LeftShift or Key.RightShift or
+                   Key.LWin or Key.RWin)
+            return;
+
+        var modifiers = HotkeyModifiers.None;
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control)) modifiers |= HotkeyModifiers.Control;
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Alt)) modifiers |= HotkeyModifiers.Alt;
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift)) modifiers |= HotkeyModifiers.Shift;
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Meta)) modifiers |= HotkeyModifiers.Meta;
+
+        var isFunction = key >= Key.F1 && key <= Key.F24;
+        if (modifiers == HotkeyModifiers.None && !isFunction)
+            return;
+
+        _vm.ApplyTooltipHotkey(modifiers, key.ToString());
     }
 }

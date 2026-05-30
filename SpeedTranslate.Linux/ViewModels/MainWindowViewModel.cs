@@ -35,6 +35,13 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private HotkeyDescriptor _hotkey = new();
     public string HotkeyDisplay => Hotkey.DisplayText;
 
+    [ObservableProperty] private HotkeyDescriptor _tooltipHotkey = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "F",
+    };
+    public string TooltipHotkeyDisplay => TooltipHotkey.DisplayText;
+
     [ObservableProperty] private bool _isFetchingModels;
     [ObservableProperty] private string _fetchModelsButtonText = "切换模型";
 
@@ -42,6 +49,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public event EventHandler<string>? RequestShowError;
     public event EventHandler<List<string>>? RequestShowModelPicker;
     public event EventHandler<HotkeyDescriptor>? HotkeyChanged;
+    public event EventHandler<HotkeyDescriptor>? TooltipHotkeyChanged;
 
     private static readonly string[] LanguageTags =
         { "Auto", "English", "Chinese", "Japanese", "Korean", "French", "German", "Spanish" };
@@ -98,6 +106,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
         Hotkey = config.Hotkey;
         OnPropertyChanged(nameof(HotkeyDisplay));
+
+        TooltipHotkey = config.TooltipHotkey;
+        OnPropertyChanged(nameof(TooltipHotkeyDisplay));
     }
 
     partial void OnSelectedModelIndexChanged(int oldValue, int newValue)
@@ -159,6 +170,12 @@ public partial class MainWindowViewModel : ViewModelBase
         HotkeyChanged?.Invoke(this, value);
     }
 
+    partial void OnTooltipHotkeyChanged(HotkeyDescriptor value)
+    {
+        OnPropertyChanged(nameof(TooltipHotkeyDisplay));
+        TooltipHotkeyChanged?.Invoke(this, value);
+    }
+
     private void LoadModelInputsFromConfig(string modelKey)
     {
         switch (modelKey)
@@ -214,12 +231,18 @@ public partial class MainWindowViewModel : ViewModelBase
         _config.EnableSelectionMode = EnableSelectionMode;
         _config.EnableAllTextMode = EnableAllTextMode;
         _config.Hotkey = Hotkey;
+        _config.TooltipHotkey = TooltipHotkey;
         return _config;
     }
 
     public void ApplyHotkey(HotkeyModifiers modifiers, string keyName)
     {
         Hotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
+    }
+
+    public void ApplyTooltipHotkey(HotkeyModifiers modifiers, string keyName)
+    {
+        TooltipHotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
     }
 
     public void ApplyChosenModelName(string modelId)
