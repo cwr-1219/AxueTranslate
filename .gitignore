@@ -43,3 +43,6 @@ unins000.*
 # Allow commit the final installation package
 !ReleaseSetup/
 !ReleaseSetup/AxueTranslate_Setup.exe
+
+# Linux .deb is distributed via GitHub Releases, not committed to the repo.
+ReleaseSetup/*.deb
