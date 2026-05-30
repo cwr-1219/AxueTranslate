@@ -14,6 +14,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+CloseApplications=force
 OutputDir=D:\CODE\workmy\speedtranslate\ReleaseSetup
 OutputBaseFilename=AxueTranslate_Setup
 Compression=lzma

@@ -10,7 +10,11 @@ namespace SpeedTranslate
 {
     public class LLMService
     {
-        private static readonly HttpClient HttpClient = new HttpClient
+        private static readonly HttpClient HttpClient = new HttpClient(new HttpClientHandler
+        {
+            // 忽略 SSL 证书验证错误，以完美兼容各类自建 IP 中转站、反代和自签名证书
+            ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+        })
         {
             Timeout = TimeSpan.FromSeconds(15) // 设置 15 秒超时
         };
