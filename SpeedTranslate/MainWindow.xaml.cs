@@ -154,6 +154,27 @@ namespace SpeedTranslate
 
             // 5. 注册全局热键
             RegisterGlobalHotkey();
+
+            // 6. 应用界面多语言国际化
+            ApplyI18n();
+        }
+
+        private void ApplyI18n()
+        {
+            I18nHelper.CurrentLanguage = _config.AppLanguage;
+            I18nHelper.ApplyLanguage(this);
+            if (LanguageToggleBtn != null)
+            {
+                LanguageToggleBtn.Content = _config.AppLanguage == "zh-CN" ? "EN" : "中文";
+            }
+        }
+
+        private void LanguageToggleBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _config.AppLanguage = _config.AppLanguage == "zh-CN" ? "en-US" : "zh-CN";
+            ConfigManager.SaveConfig(_config);
+            ApplyI18n();
+            MessageBox.Show(I18nHelper.Get("配置已保存"), I18nHelper.Get("提示"), MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         protected override void OnSourceInitialized(EventArgs e)
@@ -202,7 +223,7 @@ namespace SpeedTranslate
             bool success = HotkeyHelper.Register(helper.Handle, HOTKEY_ID, _currentModifiers, _currentKey);
             if (!success)
             {
-                MessageBox.Show($"全局替换快捷键 [{_currentHotkeyText}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", "热键冲突", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(I18nHelper.Get("全局替换快捷键 [{0}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", _currentHotkeyText), I18nHelper.Get("热键冲突"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
 
             // 2. 注册弹窗热键 (如果启用)
@@ -211,7 +232,7 @@ namespace SpeedTranslate
                 bool tooltipSuccess = HotkeyHelper.Register(helper.Handle, TOOLTIP_HOTKEY_ID, _tooltipModifiers, _tooltipKey);
                 if (!tooltipSuccess)
                 {
-                    MessageBox.Show($"全局弹窗快捷键 [{_tooltipHotkeyText}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", "热键冲突", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(I18nHelper.Get("全局弹窗快捷键 [{0}] 注册失败！\n该热键可能已被其他程序占用，请重新录入并保存。", _tooltipHotkeyText), I18nHelper.Get("热键冲突"), MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             else
@@ -920,12 +941,12 @@ namespace SpeedTranslate
 
             if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(key))
             {
-                MessageBox.Show("请先填写 API 接口地址和 API Key！", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(I18nHelper.Get("请先填写 API 接口地址和 API Key！"), I18nHelper.Get("提示"), MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             FetchModelsButton.IsEnabled = false;
-            FetchModelsButton.Content = "获取中...";
+            FetchModelsButton.Content = I18nHelper.Get("获取中...");
 
             try
             {
@@ -933,7 +954,7 @@ namespace SpeedTranslate
 
                 if (models == null || models.Count == 0)
                 {
-                    MessageBox.Show("接口未返回任何可用模型。", "获取模型", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show(I18nHelper.Get("接口未返回任何可用模型。"), I18nHelper.Get("获取模型"), MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
@@ -1114,11 +1135,11 @@ namespace SpeedTranslate
 
             if (isBuiltIn)
             {
-                MessageBox.Show("系统内置配置，无法删除。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(I18nHelper.Get("系统内置配置，无法删除。"), I18nHelper.Get("提示"), MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var result = MessageBox.Show($"确定要删除 API 配置 [{selectedDisplayName}] 吗？", "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var result = MessageBox.Show(I18nHelper.Get("确定要删除 API 配置 [{0}] 吗？", selectedDisplayName), I18nHelper.Get("确认删除"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result == MessageBoxResult.Yes)
             {
                 var cfgToDelete = _config.ModelConfigs.Find(m => m.DisplayName == selectedDisplayName);
@@ -1160,7 +1181,7 @@ namespace SpeedTranslate
             string newName = NewConfigNameTextBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(newName))
             {
-                MessageBox.Show("配置名称不能为空！", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(I18nHelper.Get("配置名称不能为空！"), I18nHelper.Get("提示"), MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1168,7 +1189,7 @@ namespace SpeedTranslate
             var exists = _config.ModelConfigs.Exists(m => m.DisplayName.Equals(newName, StringComparison.OrdinalIgnoreCase));
             if (exists)
             {
-                MessageBox.Show($"已存在名为 [{newName}] 的配置，请换个名称。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(I18nHelper.Get("已存在名为 [{0}] 的配置，请换个名称。", newName), I18nHelper.Get("提示"), MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1240,7 +1261,7 @@ namespace SpeedTranslate
             string newName = RenameConfigNameTextBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(newName))
             {
-                MessageBox.Show("配置名称不能为空！", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(I18nHelper.Get("配置名称不能为空！"), I18nHelper.Get("提示"), MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1257,7 +1278,7 @@ namespace SpeedTranslate
             var exists = _config.ModelConfigs.Exists(m => m.DisplayName.Equals(newName, StringComparison.OrdinalIgnoreCase));
             if (exists)
             {
-                MessageBox.Show($"已存在名称为 [{newName}] 的大模型配置，请使用其他名称。", "名称已存在", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(I18nHelper.Get("已存在名称为 [{0}] 的大模型配置，请使用其他名称。", newName), I18nHelper.Get("名称已存在"), MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 

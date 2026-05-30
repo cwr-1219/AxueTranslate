@@ -325,6 +325,7 @@
                     </StackPanel>
                     
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="LanguageToggleBtn" Content="EN" Click="LanguageToggleBtn_Click" ToolTip="切换语言 / Switch Language" Style="{StaticResource TitleBarButtonStyle}" Width="35" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="#A855F7" />
                         <Button Content="─" Click="MinimizeButton_Click" ToolTip="最小化" Style="{StaticResource TitleBarButtonStyle}" />
                         <Button Content="✕" Click="CloseButton_Click" ToolTip="关闭到系统托盘" Style="{StaticResource CloseButtonStyle}" />
                     </StackPanel>

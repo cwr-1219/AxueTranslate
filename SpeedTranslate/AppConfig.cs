@@ -56,5 +56,8 @@ namespace SpeedTranslate
         public ModifierKeys TooltipHotkeyModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
         public Key TooltipHotkeyKey { get; set; } = Key.F;
         public string TooltipHotkeyText { get; set; } = "Ctrl + Alt + F";
+
+        // 界面显示语言："zh-CN" (简体中文), "en-US" (English)
+        public string AppLanguage { get; set; } = "zh-CN";
     }
 }

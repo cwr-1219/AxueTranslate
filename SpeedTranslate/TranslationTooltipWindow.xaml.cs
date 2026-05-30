@@ -51,7 +51,10 @@ namespace SpeedTranslate
             
             // 回填内容
             TranslatedTextBlock.Text = translatedText;
-            ModelTagText.Text = $"划词翻译 ({config.SelectedModel})";
+            
+            // 国际化翻译界面文字
+            I18nHelper.ApplyLanguage(this);
+            ModelTagText.Text = $"{I18nHelper.Get("划词翻译")} ({config.SelectedModel})";
 
             if (!string.IsNullOrWhiteSpace(originalText) && originalText.Length < 120)
             {
