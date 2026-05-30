@@ -26,6 +26,10 @@ namespace SpeedTranslate
         private LLMService? _llmService;
         private string _originalText = "";
 
+        // 锚点逻辑坐标，记录首次划词定位，防止大小改变或翻译返回时浮窗随当前鼠标乱跑
+        private double _anchorLogicalX = -1;
+        private double _anchorLogicalY = -1;
+
         public TranslationTooltipWindow()
         {
             InitializeComponent();
@@ -37,6 +41,9 @@ namespace SpeedTranslate
         /// </summary>
         public void ShowTooltip(string originalText, string translatedText, AppConfig config, LLMService llmService)
         {
+            _anchorLogicalX = -1;
+            _anchorLogicalY = -1;
+
             _translatedText = translatedText;
             _config = config;
             _llmService = llmService;
@@ -83,22 +90,37 @@ namespace SpeedTranslate
         /// </summary>
         private void PositionAtMouse()
         {
-            if (!GetCursorPos(out Win32Point win32Point)) return;
+            double logicalX;
+            double logicalY;
 
-            double dpiScaleX = 1.0;
-            double dpiScaleY = 1.0;
-            
-            // 从当前视觉源获取 DPI 缩放比例
-            var source = PresentationSource.FromVisual(this);
-            if (source?.CompositionTarget != null)
+            if (_anchorLogicalX >= 0 && _anchorLogicalY >= 0)
             {
-                dpiScaleX = source.CompositionTarget.TransformToDevice.M11;
-                dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
+                logicalX = _anchorLogicalX;
+                logicalY = _anchorLogicalY;
             }
+            else
+            {
+                if (!GetCursorPos(out Win32Point win32Point)) return;
 
-            // 物理坐标 -> 逻辑 DIP 坐标
-            double logicalX = win32Point.X / dpiScaleX;
-            double logicalY = win32Point.Y / dpiScaleY;
+                double dpiScaleX = 1.0;
+                double dpiScaleY = 1.0;
+                
+                // 从当前视觉源获取 DPI 缩放比例
+                var source = PresentationSource.FromVisual(this);
+                if (source?.CompositionTarget != null)
+                {
+                    dpiScaleX = source.CompositionTarget.TransformToDevice.M11;
+                    dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
+                }
+
+                // 物理坐标 -> 逻辑 DIP 坐标
+                logicalX = win32Point.X / dpiScaleX;
+                logicalY = win32Point.Y / dpiScaleY;
+
+                // 暂存作为固定锚点，防止窗口尺寸自适应拉伸或重新翻译时浮窗乱跑
+                _anchorLogicalX = logicalX;
+                _anchorLogicalY = logicalY;
+            }
 
             // 偏右下方
             double left = logicalX + 12;
