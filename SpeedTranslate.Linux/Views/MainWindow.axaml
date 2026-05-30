@@ -1,0 +1,165 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SpeedTranslate.Linux.ViewModels"
+        x:Class="SpeedTranslate.Linux.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="AxueTranslate"
+        Width="440"
+        Height="600"
+        MinWidth="440"
+        MinHeight="600"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        SystemDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        FontFamily="Inter, Noto Sans CJK SC, Microsoft YaHei, sans-serif">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Border Background="#0E0B16" BorderBrush="#2D2547" BorderThickness="1" CornerRadius="12">
+        <Grid Margin="15" RowDefinitions="30,Auto,*,Auto">
+
+            <!-- 自定义标题栏 -->
+            <Border Grid.Row="0"
+                    Name="TitleBar"
+                    Background="#161224"
+                    CornerRadius="11,11,0,0"
+                    Margin="-15,-15,-15,10"
+                    PointerPressed="TitleBar_PointerPressed">
+                <Grid Margin="15,0" ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="译" Foreground="#A855F7" FontWeight="Bold" FontSize="14" Margin="0,0,8,0" />
+                        <TextBlock Text="AxueTranslate" Foreground="#94A3B8" FontSize="11" FontWeight="SemiBold" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Classes="TitleBar" Content="─" Click="MinimizeButton_Click" ToolTip.Tip="最小化" />
+                        <Button Classes="TitleBar TitleBarClose" Content="✕" Click="CloseButton_Click" ToolTip.Tip="关闭到系统托盘" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 顶部标题 -->
+            <StackPanel Grid.Row="1" Margin="0,5,0,15">
+                <TextBlock Text="AxueTranslate" Foreground="#F1F5F9" FontSize="20" FontWeight="Bold" />
+                <TextBlock Text="后台运行中 · 选中文本按下快捷键自动翻译并替换"
+                           Foreground="#64748B" FontSize="11" Margin="0,3,0,0" />
+            </StackPanel>
+
+            <!-- 配置卡片区 -->
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+
+                    <!-- 卡片一：模型与服务配置 -->
+                    <Border Classes="Card">
+                        <StackPanel>
+                            <TextBlock Text="模型服务" Classes="CardTitle" />
+
+                            <TextBlock Text="选择大模型 API" Classes="Label" />
+                            <ComboBox Classes="Modern"
+                                      Margin="0,0,0,12"
+                                      HorizontalAlignment="Stretch"
+                                      SelectedIndex="{Binding SelectedModelIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="DeepSeek" />
+                                <ComboBoxItem Content="小米大模型" />
+                                <ComboBoxItem Content="自定义模型" />
+                            </ComboBox>
+
+                            <TextBlock Text="API 接口地址" Classes="Label" />
+                            <TextBox Classes="Input" Margin="0,0,0,12" Text="{Binding ApiUrl, Mode=TwoWay}" />
+
+                            <TextBlock Text="API Key" Classes="Label" />
+                            <TextBox Classes="Input" Margin="0,0,0,12" Text="{Binding ApiKey, Mode=TwoWay}" PasswordChar="●" RevealPassword="True" />
+
+                            <TextBlock Text="模型名称 (可手填，或点击右侧获取列表)" Classes="Label" />
+                            <Grid ColumnDefinitions="*,8,90">
+                                <TextBox Grid.Column="0" Classes="Input" Text="{Binding ModelName, Mode=TwoWay}" />
+                                <Button Grid.Column="2" Classes="Secondary"
+                                        Content="{Binding FetchModelsButtonText}"
+                                        IsEnabled="{Binding !IsFetchingModels}"
+                                        Command="{Binding FetchModelsCommand}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 卡片二：触发与语种 -->
+                    <Border Classes="Card">
+                        <StackPanel>
+                            <TextBlock Text="触发与语种" Classes="CardTitle" />
+
+                            <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,12,Auto">
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock Text="目标翻译语种" Classes="Label" />
+                                    <ComboBox Classes="Modern" HorizontalAlignment="Stretch"
+                                              SelectedIndex="{Binding LanguageIndex, Mode=TwoWay}">
+                                        <ComboBoxItem Content="自动双向翻译" />
+                                        <ComboBoxItem Content="英语" />
+                                        <ComboBoxItem Content="简体中文" />
+                                        <ComboBoxItem Content="日语" />
+                                        <ComboBoxItem Content="韩语" />
+                                        <ComboBoxItem Content="法语" />
+                                        <ComboBoxItem Content="德语" />
+                                        <ComboBoxItem Content="西班牙语" />
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="2">
+                                    <TextBlock Text="全局快捷键 (点击录入)" Classes="Label" />
+                                    <TextBox Name="HotkeyTextBox"
+                                             Classes="Input"
+                                             IsReadOnly="True"
+                                             Cursor="Hand"
+                                             TextAlignment="Center"
+                                             Text="{Binding HotkeyDisplay, Mode=OneWay}"
+                                             KeyDown="HotkeyTextBox_KeyDown" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="0"
+                                            IsVisible="{Binding IsStyleVisible}">
+                                    <TextBlock Text="英文说话风格" Classes="Label" />
+                                    <ComboBox Classes="Modern" HorizontalAlignment="Stretch"
+                                              SelectedIndex="{Binding StyleIndex, Mode=TwoWay}">
+                                        <ComboBoxItem Content="默认标准翻译" />
+                                        <ComboBoxItem Content="🇺🇸 日常美式口语" />
+                                        <ComboBoxItem Content="🇬🇧 地道英式口语" />
+                                        <ComboBoxItem Content="💼 职场商务英语" />
+                                        <ComboBoxItem Content="📝 雅思学术英语" />
+                                        <ComboBoxItem Content="⚡ 极简流利表达" />
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="2" VerticalAlignment="Center">
+                                    <TextBlock Text="触发模式" Classes="Label" />
+                                    <CheckBox Classes="Dark" Content="划词翻译 (选中文本触发)"
+                                              Margin="0,2,0,5"
+                                              IsChecked="{Binding EnableSelectionMode, Mode=TwoWay}" />
+                                    <CheckBox Classes="Dark" Content="全选翻译 (未选中时翻译全部)"
+                                              IsChecked="{Binding EnableAllTextMode, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 底部保存按钮 -->
+            <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                <Button Classes="Primary"
+                        Content="保存配置并最小化到后台"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding SaveCommand}" />
+                <TextBlock Text="双击右下角系统托盘图标可重新打开设置界面"
+                           Foreground="#475569" FontSize="10" Margin="0,8,0,0"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
