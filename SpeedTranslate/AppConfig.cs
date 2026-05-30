@@ -1,24 +1,34 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Input;
 
 namespace SpeedTranslate
 {
+    public class ModelConfig
+    {
+        public string DisplayName { get; set; } = "";
+        public string ApiUrl { get; set; } = "";
+        public string ApiKey { get; set; } = "";
+        public string ModelName { get; set; } = "";
+    }
+
     public class AppConfig
     {
-        // 模型选择: "DeepSeek", "XiaoMi", "Custom"
-        public string SelectedModel { get; set; } = "DeepSeek";
+        // 当前选中的模型，关联到 ModelConfigs 列表中的 DisplayName
+        public string SelectedModel { get; set; } = "DeepSeek 大模型";
 
-        // DeepSeek 配置
+        // 动态的模型配置列表
+        public List<ModelConfig> ModelConfigs { get; set; } = new List<ModelConfig>();
+
+        // 向下兼容历史版本的字段 (用于读取旧 config.json 时的备用迁移)
         public string DeepSeekApiKey { get; set; } = "";
         public string DeepSeekModel { get; set; } = "deepseek-chat";
         public string DeepSeekUrl { get; set; } = "https://api.deepseek.com/v1";
 
-        // 小米大模型配置
         public string XiaoMiApiKey { get; set; } = "";
         public string XiaoMiModel { get; set; } = "";
         public string XiaoMiUrl { get; set; } = "";
 
-        // 自定义模型配置
         public string CustomApiKey { get; set; } = "";
         public string CustomModel { get; set; } = "";
         public string CustomUrl { get; set; } = "";

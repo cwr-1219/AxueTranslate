@@ -56,6 +56,9 @@ namespace SpeedTranslate
             // 3. 加载配置文件
             _config = ConfigManager.LoadConfig();
 
+            // 初始化默认大模型列表 (老用户自动迁移)
+            InitializeDefaultModelConfigs();
+
             // 4. 回填 UI
             _currentModifiers = _config.HotkeyModifiers;
             _currentKey = _config.HotkeyKey;
@@ -91,19 +94,28 @@ namespace SpeedTranslate
 
             // 设置模型选中项，并初始化输入框 (解绑事件以防启动初始化时因触发事件而覆盖内存配置)
             ModelSelectComboBox.SelectionChanged -= ModelSelectComboBox_SelectionChanged;
+            
+            // 刷新 ComboBox
+            RefreshModelSelectComboBox();
+
             _lastSelectedModel = _config.SelectedModel;
-            if (_config.SelectedModel == "DeepSeek")
+            bool foundSelected = false;
+            for (int i = 0; i < ModelSelectComboBox.Items.Count; i++)
+            {
+                if (ModelSelectComboBox.Items[i] is ComboBoxItem item && item.Content?.ToString() == _config.SelectedModel)
+                {
+                    ModelSelectComboBox.SelectedIndex = i;
+                    foundSelected = true;
+                    break;
+                }
+            }
+            if (!foundSelected && ModelSelectComboBox.Items.Count > 0)
             {
                 ModelSelectComboBox.SelectedIndex = 0;
+                _config.SelectedModel = (ModelSelectComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "";
+                _lastSelectedModel = _config.SelectedModel;
             }
-            else if (_config.SelectedModel == "XiaoMi")
-            {
-                ModelSelectComboBox.SelectedIndex = 1;
-            }
-            else
-            {
-                ModelSelectComboBox.SelectedIndex = 2;
-            }
+
             LoadModelConfigToUI(_config.SelectedModel);
             ModelSelectComboBox.SelectionChanged += ModelSelectComboBox_SelectionChanged;
 
@@ -223,62 +235,53 @@ namespace SpeedTranslate
             SaveModelConfigFromUI(_lastSelectedModel);
 
             // 2. 更新当前选中模型
-            string selectedModel = selectedItem.Content.ToString() == "小米大模型" ? "XiaoMi" : 
-                                   selectedItem.Content.ToString() == "自定义模型" ? "Custom" : "DeepSeek";
-            
+            string selectedModel = selectedItem.Content.ToString();
             _lastSelectedModel = selectedModel;
 
             // 3. 将新选中的模型配置加载到 UI 输入框
             LoadModelConfigToUI(selectedModel);
+
+            // 控制删除按钮是否可用：内置模型不允许删除
+            if (DeleteConfigButton != null)
+            {
+                bool isBuiltIn = selectedModel == "DeepSeek 大模型" || 
+                                 selectedModel == "小米大模型" || 
+                                 selectedModel == "OpenAI (ChatGPT)" || 
+                                 selectedModel == "Anthropic (Claude)" || 
+                                 selectedModel == "Google (Gemini)" || 
+                                 selectedModel == "自定义模型";
+                DeleteConfigButton.IsEnabled = !isBuiltIn;
+                DeleteConfigButton.Opacity = isBuiltIn ? 0.4 : 1.0;
+            }
         }
 
         /// <summary>
         /// 从 UI 抓取配置保存到内存实体中
         /// </summary>
-        private void SaveModelConfigFromUI(string model)
+        private void SaveModelConfigFromUI(string modelDisplayName)
         {
-            if (model == "DeepSeek")
+            if (string.IsNullOrWhiteSpace(modelDisplayName)) return;
+            var modelConfig = _config.ModelConfigs.Find(m => m.DisplayName == modelDisplayName);
+            if (modelConfig != null)
             {
-                _config.DeepSeekUrl = ApiUrlTextBox.Text.Trim();
-                _config.DeepSeekApiKey = ApiKeyTextBox.Text.Trim();
-                _config.DeepSeekModel = ModelNameTextBox.Text.Trim();
-            }
-            else if (model == "XiaoMi")
-            {
-                _config.XiaoMiUrl = ApiUrlTextBox.Text.Trim();
-                _config.XiaoMiApiKey = ApiKeyTextBox.Text.Trim();
-                _config.XiaoMiModel = ModelNameTextBox.Text.Trim();
-            }
-            else
-            {
-                _config.CustomUrl = ApiUrlTextBox.Text.Trim();
-                _config.CustomApiKey = ApiKeyTextBox.Text.Trim();
-                _config.CustomModel = ModelNameTextBox.Text.Trim();
+                modelConfig.ApiUrl = ApiUrlTextBox.Text.Trim();
+                modelConfig.ApiKey = ApiKeyTextBox.Text.Trim();
+                modelConfig.ModelName = ModelNameTextBox.Text.Trim();
             }
         }
 
         /// <summary>
         /// 将指定模型的配置加载到 UI
         /// </summary>
-        private void LoadModelConfigToUI(string model)
+        private void LoadModelConfigToUI(string modelDisplayName)
         {
-            if (model == "DeepSeek")
+            if (string.IsNullOrWhiteSpace(modelDisplayName)) return;
+            var modelConfig = _config.ModelConfigs.Find(m => m.DisplayName == modelDisplayName);
+            if (modelConfig != null)
             {
-                ApiUrlTextBox.Text = string.IsNullOrWhiteSpace(_config.DeepSeekUrl) ? "https://api.deepseek.com/v1" : _config.DeepSeekUrl;
-                ApiKeyTextBox.Text = _config.DeepSeekApiKey;
-                ModelNameTextBox.Text = string.IsNullOrWhiteSpace(_config.DeepSeekModel) ? "deepseek-chat" : _config.DeepSeekModel;
-            }
-            else if (model == "XiaoMi")
-            {
-                ApiUrlTextBox.Text = _config.XiaoMiUrl;
-                ApiKeyTextBox.Text = _config.XiaoMiApiKey;
-                ModelNameTextBox.Text = _config.XiaoMiModel;
-            }
-            else
-            {
-                ApiUrlTextBox.Text = _config.CustomUrl;
-                ApiKeyTextBox.Text = _config.CustomApiKey;
-                ModelNameTextBox.Text = _config.CustomModel;
+                ApiUrlTextBox.Text = modelConfig.ApiUrl;
+                ApiKeyTextBox.Text = modelConfig.ApiKey;
+                ModelNameTextBox.Text = modelConfig.ModelName;
             }
         }
 
@@ -290,8 +293,7 @@ namespace SpeedTranslate
             // 保存当前选中的模型及其配置
             if (ModelSelectComboBox.SelectedItem is ComboBoxItem selectedItem && selectedItem.Content != null)
             {
-                string selectedModelName = selectedItem.Content.ToString() == "小米大模型" ? "XiaoMi" : 
-                                           selectedItem.Content.ToString() == "自定义模型" ? "Custom" : "DeepSeek";
+                string selectedModelName = selectedItem.Content.ToString();
                 _config.SelectedModel = selectedModelName;
                 SaveModelConfigFromUI(selectedModelName);
             }
@@ -624,6 +626,20 @@ namespace SpeedTranslate
             catch { }
         }
 
+        private static readonly System.Collections.Generic.List<string> RecommendedModels = new System.Collections.Generic.List<string>
+        {
+            "deepseek-chat",
+            "deepseek-reasoner",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo",
+            "claude-3-5-sonnet",
+            "claude-3-opus",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "mimo-v2.5"
+        };
+
         /// <summary>
         /// 异步获取可用模型列表，并在按钮下方弹出列表以供点选
         /// </summary>
@@ -679,14 +695,249 @@ namespace SpeedTranslate
             }
             catch (Exception ex)
             {
-                WriteErrorLog("获取可用模型列表失败", ex);
-                MessageBox.Show($"获取模型列表失败！\n原因: {ex.Message}\n详细信息已记录到日志 error.log。", "获取失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                WriteErrorLog("获取可用模型列表失败，将显示常用推荐模型", ex);
+                
+                // 弹出 ContextMenu 并展示默认推荐模型，彻底解决中转站反向代理不支持 /models 的情况
+                var contextMenu = new ContextMenu
+                {
+                    Style = (Style)FindResource("ModernContextMenuStyle")
+                };
+
+                // 增加一个不可点击的提示项
+                var tipItem = new MenuItem
+                {
+                    Header = "⚠️ 获取失败，显示常用大模型：",
+                    IsEnabled = false,
+                    Style = (Style)FindResource("ModernMenuItemStyle"),
+                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184))
+                };
+                contextMenu.Items.Add(tipItem);
+
+                foreach (var model in RecommendedModels)
+                {
+                    var item = new MenuItem
+                    {
+                        Header = model,
+                        Style = (Style)FindResource("ModernMenuItemStyle")
+                    };
+                    
+                    item.Click += (s, ev) =>
+                    {
+                        ModelNameTextBox.Text = model;
+                    };
+                    contextMenu.Items.Add(item);
+                }
+
+                // 弹出在按钮下方
+                contextMenu.PlacementTarget = FetchModelsButton;
+                contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                contextMenu.IsOpen = true;
             }
             finally
             {
                 FetchModelsButton.IsEnabled = true;
                 FetchModelsButton.Content = "切换模型";
             }
+        }
+
+        // ==================== 动态 API 模型配置管理相关 ====================
+
+        private void InitializeDefaultModelConfigs()
+        {
+            if (_config.ModelConfigs == null)
+            {
+                _config.ModelConfigs = new List<ModelConfig>();
+            }
+
+            if (_config.ModelConfigs.Count == 0)
+            {
+                // 1. DeepSeek 大模型
+                _config.ModelConfigs.Add(new ModelConfig
+                {
+                    DisplayName = "DeepSeek 大模型",
+                    ApiUrl = string.IsNullOrWhiteSpace(_config.DeepSeekUrl) ? "https://api.deepseek.com/v1" : _config.DeepSeekUrl,
+                    ApiKey = _config.DeepSeekApiKey,
+                    ModelName = string.IsNullOrWhiteSpace(_config.DeepSeekModel) ? "deepseek-chat" : _config.DeepSeekModel
+                });
+
+                // 2. 小米大模型
+                _config.ModelConfigs.Add(new ModelConfig
+                {
+                    DisplayName = "小米大模型",
+                    ApiUrl = string.IsNullOrWhiteSpace(_config.XiaoMiUrl) ? "https://token-plan-cn.xiaomimimo.com/v1" : _config.XiaoMiUrl,
+                    ApiKey = _config.XiaoMiApiKey,
+                    ModelName = string.IsNullOrWhiteSpace(_config.XiaoMiModel) ? "mimo-v2.5" : _config.XiaoMiModel
+                });
+
+                // 3. OpenAI (ChatGPT)
+                _config.ModelConfigs.Add(new ModelConfig
+                {
+                    DisplayName = "OpenAI (ChatGPT)",
+                    ApiUrl = "https://api.openai.com/v1",
+                    ApiKey = "",
+                    ModelName = "gpt-4o"
+                });
+
+                // 4. Anthropic (Claude)
+                _config.ModelConfigs.Add(new ModelConfig
+                {
+                    DisplayName = "Anthropic (Claude)",
+                    ApiUrl = "https://api.anthropic.com/v1",
+                    ApiKey = "",
+                    ModelName = "claude-3-5-sonnet"
+                });
+
+                // 5. Google (Gemini)
+                _config.ModelConfigs.Add(new ModelConfig
+                {
+                    DisplayName = "Google (Gemini)",
+                    ApiUrl = "https://generativetoolkit.googleapis.com/v1beta/openai",
+                    ApiKey = "",
+                    ModelName = "gemini-1.5-pro"
+                });
+
+                // 6. 自定义模型
+                _config.ModelConfigs.Add(new ModelConfig
+                {
+                    DisplayName = "自定义模型",
+                    ApiUrl = _config.CustomUrl,
+                    ApiKey = _config.CustomApiKey,
+                    ModelName = _config.CustomModel
+                });
+            }
+        }
+
+        private void RefreshModelSelectComboBox()
+        {
+            ModelSelectComboBox.Items.Clear();
+            foreach (var cfg in _config.ModelConfigs)
+            {
+                ModelSelectComboBox.Items.Add(new ComboBoxItem { Content = cfg.DisplayName });
+            }
+        }
+
+        /// <summary>
+        /// 点击新增模型配置按钮：弹出暗色遮罩模态框
+        /// </summary>
+        private void AddConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            NewConfigNameTextBox.Text = "";
+            ModalOverlay.Visibility = Visibility.Visible;
+            NewConfigNameTextBox.Focus();
+        }
+
+        /// <summary>
+        /// 点击删除选中模型配置按钮 (只允许删除用户自定义新增的模型)
+        /// </summary>
+        private void DeleteConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (ModelSelectComboBox.SelectedItem is not ComboBoxItem selectedItem || selectedItem.Content == null) return;
+            string selectedDisplayName = selectedItem.Content.ToString();
+
+            // 内置模型判定
+            bool isBuiltIn = selectedDisplayName == "DeepSeek 大模型" || 
+                             selectedDisplayName == "小米大模型" || 
+                             selectedDisplayName == "OpenAI (ChatGPT)" || 
+                             selectedDisplayName == "Anthropic (Claude)" || 
+                             selectedDisplayName == "Google (Gemini)" || 
+                             selectedDisplayName == "自定义模型";
+
+            if (isBuiltIn)
+            {
+                MessageBox.Show("系统内置配置，无法删除。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var result = MessageBox.Show($"确定要删除 API 配置 [{selectedDisplayName}] 吗？", "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                var cfgToDelete = _config.ModelConfigs.Find(m => m.DisplayName == selectedDisplayName);
+                if (cfgToDelete != null)
+                {
+                    _config.ModelConfigs.Remove(cfgToDelete);
+                }
+
+                // 切换模型
+                ModelSelectComboBox.SelectionChanged -= ModelSelectComboBox_SelectionChanged;
+                RefreshModelSelectComboBox();
+
+                // 切换回 DeepSeek
+                ModelSelectComboBox.SelectedIndex = 0;
+                _config.SelectedModel = "DeepSeek 大模型";
+                _lastSelectedModel = _config.SelectedModel;
+                LoadModelConfigToUI(_config.SelectedModel);
+
+                ModelSelectComboBox.SelectionChanged += ModelSelectComboBox_SelectionChanged;
+
+                // 强制同步保存一次
+                ConfigManager.SaveConfig(_config);
+            }
+        }
+
+        /// <summary>
+        /// 取消新建模型配置
+        /// </summary>
+        private void CancelModalButton_Click(object sender, RoutedEventArgs e)
+        {
+            ModalOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// 确定新建模型配置
+        /// </summary>
+        private void ConfirmModalButton_Click(object sender, RoutedEventArgs e)
+        {
+            string newName = NewConfigNameTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                MessageBox.Show("配置名称不能为空！", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // 检查重名
+            var exists = _config.ModelConfigs.Exists(m => m.DisplayName.Equals(newName, StringComparison.OrdinalIgnoreCase));
+            if (exists)
+            {
+                MessageBox.Show($"已存在名为 [{newName}] 的配置，请换个名称。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // 保存当前模型的 UI 配置
+            SaveModelConfigFromUI(_lastSelectedModel);
+
+            // 建立新的 ModelConfig，并采用当前 UI 输入的内容作为初始模板，让用户快速修改
+            var newConfig = new ModelConfig
+            {
+                DisplayName = newName,
+                ApiUrl = ApiUrlTextBox.Text.Trim(),
+                ApiKey = ApiKeyTextBox.Text.Trim(),
+                ModelName = ModelNameTextBox.Text.Trim()
+            };
+
+            _config.ModelConfigs.Add(newConfig);
+
+            // 刷新下拉框
+            ModelSelectComboBox.SelectionChanged -= ModelSelectComboBox_SelectionChanged;
+            RefreshModelSelectComboBox();
+
+            // 选中新添加的项
+            for (int i = 0; i < ModelSelectComboBox.Items.Count; i++)
+            {
+                if (ModelSelectComboBox.Items[i] is ComboBoxItem item && item.Content?.ToString() == newName)
+                {
+                    ModelSelectComboBox.SelectedIndex = i;
+                    break;
+                }
+            }
+
+            _config.SelectedModel = newName;
+            _lastSelectedModel = newName;
+            LoadModelConfigToUI(newName);
+
+            ModelSelectComboBox.SelectionChanged += ModelSelectComboBox_SelectionChanged;
+
+            // 隐藏 Overlay
+            ModalOverlay.Visibility = Visibility.Collapsed;
         }
 
         /// <summary>

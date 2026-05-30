@@ -31,23 +31,39 @@ namespace SpeedTranslate
             string apiKey = "";
             string modelName = "";
 
-            if (config.SelectedModel == "DeepSeek")
+            ModelConfig activeConfig = null;
+            if (config.ModelConfigs != null)
             {
-                apiUrl = config.DeepSeekUrl;
-                apiKey = config.DeepSeekApiKey;
-                modelName = config.DeepSeekModel;
+                activeConfig = config.ModelConfigs.Find(m => m.DisplayName == config.SelectedModel);
             }
-            else if (config.SelectedModel == "XiaoMi")
+
+            if (activeConfig != null)
             {
-                apiUrl = config.XiaoMiUrl;
-                apiKey = config.XiaoMiApiKey;
-                modelName = config.XiaoMiModel;
+                apiUrl = activeConfig.ApiUrl;
+                apiKey = activeConfig.ApiKey;
+                modelName = activeConfig.ModelName;
             }
-            else // Custom
+            else
             {
-                apiUrl = config.CustomUrl;
-                apiKey = config.CustomApiKey;
-                modelName = config.CustomModel;
+                // 向下兼容历史配置字段
+                if (config.SelectedModel == "DeepSeek" || config.SelectedModel == "DeepSeek 大模型")
+                {
+                    apiUrl = config.DeepSeekUrl;
+                    apiKey = config.DeepSeekApiKey;
+                    modelName = config.DeepSeekModel;
+                }
+                else if (config.SelectedModel == "XiaoMi" || config.SelectedModel == "小米大模型")
+                {
+                    apiUrl = config.XiaoMiUrl;
+                    apiKey = config.XiaoMiApiKey;
+                    modelName = config.XiaoMiModel;
+                }
+                else
+                {
+                    apiUrl = config.CustomUrl;
+                    apiKey = config.CustomApiKey;
+                    modelName = config.CustomModel;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(apiUrl) || string.IsNullOrWhiteSpace(apiKey))
