@@ -1,0 +1,23 @@
+Package: axue-translate
+Version: {{VERSION}}
+Section: utils
+Priority: optional
+Architecture: {{ARCH}}
+Depends: xclip, xdotool, libx11-6, libxext6, libice6, libsm6, libfontconfig1, libssl3 | libssl1.1
+Recommends: libnotify4
+Installed-Size: {{SIZE}}
+Maintainer: AxueTranslate Maintainers <noreply@example.com>
+Homepage: https://github.com/cwr-1219/AxueTranslate
+Description: Hotkey-driven AI translation tool for Linux desktops
+ AxueTranslate is a desktop utility that lets you press a global hotkey to
+ translate the currently selected text (or the whole input) using a Large
+ Language Model API (DeepSeek, Xiaomi, or any OpenAI-compatible endpoint),
+ then automatically pastes the translation back into the focused window.
+ .
+ This package provides the X11 build of AxueTranslate, written in C# /
+ Avalonia 11. It ships as a self-contained .NET 8 binary so no system
+ dotnet runtime is required.
+ .
+ Wayland sessions are not supported (XTest-based input simulation requires
+ an X11 server). On Wayland desktops, log out and pick the X11/Xorg session
+ before launching.

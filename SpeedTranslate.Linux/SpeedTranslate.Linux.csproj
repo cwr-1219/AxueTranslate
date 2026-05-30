@@ -8,6 +8,9 @@
     <AssemblyName>AxueTranslate</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Version>1.0.0</Version>
+    <!-- Skip ICU loading — app does no culture-aware string ops, this drops the libicu* runtime dep. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>

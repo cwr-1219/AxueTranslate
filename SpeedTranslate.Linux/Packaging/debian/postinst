@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+# Update icon and desktop database caches if the tools are present.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications 2>/dev/null || true
+fi
+
+# Friendly heads-up if the user is on Wayland.
+case "${XDG_SESSION_TYPE:-}" in
+    wayland)
+        echo ""
+        echo "AxueTranslate: detected Wayland session."
+        echo "  Global hotkeys and keystroke simulation require X11."
+        echo "  Log out and pick the 'X11' / 'Xorg' session before launching."
+        echo ""
+        ;;
+esac
+
+exit 0

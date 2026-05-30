@@ -1,0 +1,5 @@
+#!/bin/sh
+# /usr/bin/axue-translate launcher — keeps the install layout under
+# /usr/lib/axue-translate/ and forwards CLI args to the self-contained binary.
+set -e
+exec /usr/lib/axue-translate/AxueTranslate "$@"
