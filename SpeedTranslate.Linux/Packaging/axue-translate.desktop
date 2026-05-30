@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=AxueTranslate
+GenericName=AI Translator
+GenericName[zh_CN]=AI 翻译
+Comment=Hotkey-driven AI translation that pastes results back into the focused app
+Comment[zh_CN]=按下快捷键即可调用 AI 翻译，结果直接粘贴回当前输入位置
+Exec=axue-translate
+Icon=axue-translate
+Terminal=false
+Categories=Utility;Office;
+Keywords=translate;translation;ai;deepseek;
+StartupNotify=false
+StartupWMClass=AxueTranslate
