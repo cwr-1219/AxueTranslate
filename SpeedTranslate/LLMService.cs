@@ -79,7 +79,17 @@ namespace SpeedTranslate
             apiUrl = apiUrl.Trim();
             if (!apiUrl.EndsWith("/chat/completions"))
             {
-                apiUrl = apiUrl.TrimEnd('/') + "/chat/completions";
+                string tempUrl = apiUrl.TrimEnd('/');
+                // 自建中转站（如 OneAPI / NewAPI / FastGPT）的 API 基准地址通常需要包含 /v1。
+                // 如果用户没有写 /v1，且不是小米官方等特殊地址，我们自动为其补齐 /v1/chat/completions，大大提升容错性！
+                if (!tempUrl.EndsWith("/v1") && !tempUrl.Contains("/v1/") && !tempUrl.Contains("xiaomimimo.com"))
+                {
+                    apiUrl = tempUrl + "/v1/chat/completions";
+                }
+                else
+                {
+                    apiUrl = tempUrl + "/chat/completions";
+                }
             }
 
             // 2. 构造 System Prompt (根据目标语种和口语等风格定制)
@@ -138,22 +148,38 @@ CRITICAL RULES:
                     throw new Exception($"API 请求失败 (HTTP {response.StatusCode}): {responseContent}");
                 }
 
-                var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseContent);
-                if (chatResponse?.Choices == null || chatResponse.Choices.Length == 0)
+                try
                 {
-                    throw new Exception("模型未返回任何结果。");
-                }
+                    var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseContent);
+                    if (chatResponse?.Choices == null || chatResponse.Choices.Length == 0)
+                    {
+                        throw new Exception("模型未返回任何结果。");
+                    }
 
-                string translatedText = chatResponse.Choices[0].Message?.Content;
-                if (translatedText == null)
+                    string translatedText = chatResponse.Choices[0].Message?.Content;
+                    if (translatedText == null)
+                    {
+                        throw new Exception("模型响应内容为空。");
+                    }
+
+                    // 移除前后空白和多余的包裹字符
+                    translatedText = CleanTranslatedText(translatedText);
+
+                    return translatedText;
+                }
+                catch (JsonException jsonEx)
                 {
-                    throw new Exception("模型响应内容为空。");
+                    // 检测是否返回了 HTML (首字母为 '<')
+                    string trimmedResponse = responseContent.Trim();
+                    if (trimmedResponse.StartsWith("<") || trimmedResponse.Contains("<!DOCTYPE") || trimmedResponse.Contains("<html"))
+                    {
+                        throw new Exception("接口返回了网页而非 JSON 数据，请检查接口地址是否需要补全 /v1 后缀或端口是否正确。", jsonEx);
+                    }
+                    else
+                    {
+                        throw new Exception($"模型响应解析失败。请确保填写的地址正确。原始响应: {responseContent}", jsonEx);
+                    }
                 }
-
-                // 移除前后空白和多余的包裹字符
-                translatedText = CleanTranslatedText(translatedText);
-
-                return translatedText;
             }
         }
 
