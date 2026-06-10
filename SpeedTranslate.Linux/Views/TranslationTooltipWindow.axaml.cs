@@ -1,11 +1,15 @@
 using System;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using SpeedTranslate.Linux.Models;
+using SpeedTranslate.Linux.Rendering;
 using SpeedTranslate.Linux.Services;
 
 namespace SpeedTranslate.Linux.Views;
@@ -14,10 +18,12 @@ public readonly record struct TooltipLayoutMetrics(double Width, double ContentM
 
 public partial class TranslationTooltipWindow : Window
 {
-    private const double CompactWidth = 350;
+    private const double CompactWidth = 420;
     private const double CompactContentMaxHeight = 220;
     private const double MaxLongTextWidth = 680;
     private const double MaxLongTextContentHeight = 560;
+    private const string MathFontFamily = "Noto Sans Math, Noto Sans Mono, Consolas, monospace";
+    private static readonly IBrush MathBrush = new SolidColorBrush(Color.Parse("#67E8F9"));
 
     private bool _isClosing;
     private string _translatedText = "";
@@ -26,6 +32,7 @@ public partial class TranslationTooltipWindow : Window
     private LLMService? _llmService;
     private InputSimulator? _inputSimulator;
     private CancellationToken _shutdownToken;
+    private bool _isSummaryMode;
 
     // 锚点：首次弹出时记录，防止内容变化时浮窗乱跑
     private PixelPoint _anchor = new(-9999, -9999);
@@ -45,7 +52,8 @@ public partial class TranslationTooltipWindow : Window
         LLMService llmService,
         InputSimulator inputSimulator,
         PixelPoint cursorPos,
-        CancellationToken shutdownToken = default)
+        CancellationToken shutdownToken = default,
+        bool isSummaryMode = false)
     {
         _isClosing = false;
         _originalText = originalText;
@@ -54,13 +62,13 @@ public partial class TranslationTooltipWindow : Window
         _llmService = llmService;
         _inputSimulator = inputSimulator;
         _shutdownToken = shutdownToken;
+        _isSummaryMode = isSummaryMode;
 
         // 填充内容
-        var modelTag = this.FindControl<TextBlock>("ModelTagText");
-        if (modelTag != null) modelTag.Text = $"划词翻译 ({config.SelectedModel})";
+        UpdateModeTag();
 
         var translated = this.FindControl<TextBlock>("TranslatedTextBlock");
-        if (translated != null) translated.Text = translatedText;
+        if (translated != null) RenderMarkdown(translated, translatedText, CurrentRenderOptions);
 
         var original = this.FindControl<TextBlock>("OriginalTextBlock");
         if (original != null)
@@ -102,8 +110,18 @@ public partial class TranslationTooltipWindow : Window
         _translatedText = text;
         ApplyLayoutForText(text);
         var tb = this.FindControl<TextBlock>("TranslatedTextBlock");
-        if (tb != null) tb.Text = text;
+        if (tb != null) RenderMarkdown(tb, text, CurrentRenderOptions);
         RepositionIfNeeded();
+    }
+
+    private MarkdownRenderOptions CurrentRenderOptions =>
+        _config == null ? MarkdownRenderOptions.Default : MarkdownRenderOptions.FromConfig(_config);
+
+    private void UpdateModeTag()
+    {
+        var modelTag = this.FindControl<TextBlock>("ModelTagText");
+        if (modelTag != null && _config != null)
+            modelTag.Text = $"{(_isSummaryMode ? "摘要" : "划词翻译")} ({_config.SelectedModel})";
     }
 
     // ── 定位 ──────────────────────────────────────────────────────────────────
@@ -240,14 +258,17 @@ public partial class TranslationTooltipWindow : Window
         ConfigManager.SaveConfig(_config);
 
         var tb = this.FindControl<TextBlock>("TranslatedTextBlock");
-        if (tb != null) tb.Text = "翻译中...";
+        if (tb != null) RenderMarkdown(tb, _isSummaryMode ? "正在生成摘要..." : "翻译中...", CurrentRenderOptions);
 
         try
         {
             _shutdownToken.ThrowIfCancellationRequested();
-            var result = await _llmService.TranslateAsync(_originalText, _config, _shutdownToken);
+            var result = _isSummaryMode
+                ? await _llmService.SummarizeAsync(_originalText, _config, _shutdownToken)
+                : await _llmService.TranslateAsync(_originalText, _config, _shutdownToken);
             _shutdownToken.ThrowIfCancellationRequested();
             UpdateTranslatedText(result);
+            UpdateModeTag();
         }
         catch (OperationCanceledException) when (_shutdownToken.IsCancellationRequested)
         {
@@ -263,6 +284,41 @@ public partial class TranslationTooltipWindow : Window
     private void CloseButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         => FadeOutAndClose();
 
+    private async void SummaryButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_config == null || _llmService == null || string.IsNullOrWhiteSpace(_originalText))
+            return;
+
+        var btn = this.FindControl<Button>("SummaryBtn");
+        if (btn != null)
+            btn.IsEnabled = false;
+
+        _isSummaryMode = true;
+        UpdateModeTag();
+        if (this.FindControl<TextBlock>("TranslatedTextBlock") is { } tb)
+            RenderMarkdown(tb, "正在生成摘要...", CurrentRenderOptions);
+
+        try
+        {
+            _shutdownToken.ThrowIfCancellationRequested();
+            var result = await _llmService.SummarizeAsync(_originalText, _config, _shutdownToken);
+            _shutdownToken.ThrowIfCancellationRequested();
+            UpdateTranslatedText(result);
+        }
+        catch (OperationCanceledException) when (_shutdownToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            UpdateTranslatedText($"摘要失败: {ex.Message}");
+        }
+        finally
+        {
+            if (btn != null)
+                btn.IsEnabled = true;
+        }
+    }
+
     private async void CopyButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_translatedText)) return;
@@ -271,7 +327,7 @@ public partial class TranslationTooltipWindow : Window
         {
             var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
             if (clipboard != null)
-                await clipboard.SetTextAsync(_translatedText);
+                await clipboard.SetTextAsync(MarkdownOutputSanitizer.RemoveColorTags(_translatedText));
 
             var btn = this.FindControl<Button>("CopyBtn");
             if (btn != null)
@@ -279,7 +335,7 @@ public partial class TranslationTooltipWindow : Window
                 btn.Content = "已复制 ✔";
                 btn.IsEnabled = false;
                 await Task.Delay(1500);
-                btn.Content = "📋 复制";
+                btn.Content = "复制";
                 btn.IsEnabled = true;
             }
         }
@@ -300,7 +356,7 @@ public partial class TranslationTooltipWindow : Window
         try
         {
             var clipboard = new ClipboardService();
-            await clipboard.SetClipboardTextAsync(_translatedText);
+            await clipboard.SetClipboardTextAsync(MarkdownOutputSanitizer.RemoveColorTags(_translatedText));
             await Task.Delay(80);
             await _inputSimulator.SendPasteAsync(null);
         }
@@ -326,5 +382,295 @@ public partial class TranslationTooltipWindow : Window
             e.Handled = true;
             FadeOutAndClose();
         }
+    }
+
+    private static void RenderMarkdown(
+        TextBlock target,
+        string markdown,
+        MarkdownRenderOptions options = default)
+    {
+        if (options == default)
+            options = MarkdownRenderOptions.Default;
+
+        target.Text = "";
+        target.Inlines?.Clear();
+
+        var lines = markdown.Replace("\r\n", "\n").Split('\n');
+        var colorRenderer = MarkdownColorRendererFactory.Create(options.EnableColorRendering, options.ColorRenderMode);
+        var needsLineBreak = false;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (options.EnableMathRendering && TryReadMathBlock(lines, ref i, out var formula))
+            {
+                if (needsLineBreak)
+                    target.Inlines?.Add(new LineBreak());
+
+                var mathStyle = new MarkdownInlineStyle(
+                    MathBrush,
+                    FontWeight.SemiBold,
+                    target.FontSize + 1,
+                    MathFontFamily);
+                AddRun(target, MarkdownMathRenderer.ToDisplayText(formula), mathStyle);
+                needsLineBreak = true;
+                continue;
+            }
+
+            if (needsLineBreak)
+                target.Inlines?.Add(new LineBreak());
+
+            var (display, weight, size, indent) = ParseMarkdownLine(lines[i], target.FontSize);
+            if (indent > 0)
+                target.Inlines?.Add(new Run(new string(' ', indent)));
+            AddInlineRuns(
+                target,
+                display,
+                new MarkdownInlineStyle(null, weight, size, null),
+                colorRenderer,
+                options.EnableMathRendering);
+            needsLineBreak = true;
+        }
+    }
+
+    public static (string Display, FontWeight Weight, double FontSize, int Indent) ParseMarkdownLine(
+        string line,
+        double baseFontSize)
+    {
+        var text = line.TrimEnd();
+        if (string.IsNullOrWhiteSpace(text))
+            return ("", FontWeight.Normal, baseFontSize, 0);
+
+        var trimmed = text.TrimStart();
+        var headingLevel = 0;
+        while (headingLevel < trimmed.Length && headingLevel < 3 && trimmed[headingLevel] == '#')
+            headingLevel++;
+
+        if (headingLevel > 0 && headingLevel < trimmed.Length && trimmed[headingLevel] == ' ')
+        {
+            return (
+                trimmed[(headingLevel + 1)..].Trim(),
+                FontWeight.Bold,
+                headingLevel == 1 ? baseFontSize + 2 : baseFontSize + 1,
+                0);
+        }
+
+        if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
+            return ("• " + trimmed[2..].Trim(), FontWeight.Normal, baseFontSize, 2);
+
+        var numbered = Regex.Match(trimmed, @"^(\d+)[\.)]\s+(.+)$");
+        if (numbered.Success)
+            return ($"{numbered.Groups[1].Value}. {numbered.Groups[2].Value}", FontWeight.Normal, baseFontSize, 2);
+
+        return (trimmed, FontWeight.Normal, baseFontSize, 0);
+    }
+
+    private static bool TryReadMathBlock(string[] lines, ref int index, out string formula)
+    {
+        formula = "";
+        var trimmed = lines[index].Trim();
+        var isDollarBlock = trimmed.StartsWith("$$", StringComparison.Ordinal);
+        var isBracketBlock = trimmed.StartsWith(@"\[", StringComparison.Ordinal);
+        if (!isDollarBlock && !isBracketBlock)
+            return false;
+
+        var start = isDollarBlock ? "$$" : @"\[";
+        var end = isDollarBlock ? "$$" : @"\]";
+        var current = trimmed[start.Length..];
+        var builder = current.EndsWith(end, StringComparison.Ordinal) && current.Length >= end.Length
+            ? current[..^end.Length]
+            : current;
+
+        while (!current.EndsWith(end, StringComparison.Ordinal) && index + 1 < lines.Length)
+        {
+            index++;
+            current = lines[index].Trim();
+            if (current.EndsWith(end, StringComparison.Ordinal))
+                builder += "\n" + current[..^end.Length];
+            else
+                builder += "\n" + current;
+        }
+
+        formula = builder.Trim();
+        return true;
+    }
+
+    private static void AddInlineRuns(
+        TextBlock target,
+        string text,
+        MarkdownInlineStyle baseStyle,
+        IMarkdownColorRenderer colorRenderer,
+        bool enableMathRendering)
+    {
+        var index = 0;
+        while (index < text.Length)
+        {
+            var next = FindNextSpecial(text, index, enableMathRendering);
+            if (next < 0)
+            {
+                AddRun(target, text[index..], baseStyle);
+                return;
+            }
+
+            if (next > index)
+            {
+                AddRun(target, text[index..next], baseStyle);
+                index = next;
+            }
+
+            if (TryParseColorTag(text, index, colorRenderer, out var body, out var tagStyle, out var tagLength))
+            {
+                AddInlineRuns(target, body, baseStyle.Merge(tagStyle), colorRenderer, enableMathRendering);
+                index += tagLength;
+                continue;
+            }
+
+            if (TryParseBold(text, index, out body, out tagLength))
+            {
+                AddInlineRuns(
+                    target,
+                    body,
+                    baseStyle.Merge(new MarkdownInlineStyle(null, FontWeight.Bold, null, null)),
+                    colorRenderer,
+                    enableMathRendering);
+                index += tagLength;
+                continue;
+            }
+
+            if (enableMathRendering && TryParseInlineMath(text, index, out var formula, out tagLength))
+            {
+                var mathStyle = baseStyle.Merge(new MarkdownInlineStyle(
+                    MathBrush,
+                    FontWeight.SemiBold,
+                    baseStyle.FontSize.HasValue ? baseStyle.FontSize.Value + 1 : null,
+                    MathFontFamily));
+                AddRun(target, MarkdownMathRenderer.ToDisplayText(formula), mathStyle);
+                index += tagLength;
+                continue;
+            }
+
+            AddRun(target, text[index].ToString(), baseStyle);
+            index++;
+        }
+    }
+
+    private static int FindNextSpecial(string text, int start, bool includeMath)
+    {
+        var next = IndexOfOrMax(text, "**", start);
+        next = Math.Min(next, IndexOfOrMax(text, "<", start));
+        if (includeMath)
+        {
+            next = Math.Min(next, IndexOfOrMax(text, "$", start));
+            next = Math.Min(next, IndexOfOrMax(text, @"\(", start));
+        }
+
+        return next == int.MaxValue ? -1 : next;
+    }
+
+    private static int IndexOfOrMax(string text, string value, int start)
+    {
+        var index = text.IndexOf(value, start, StringComparison.Ordinal);
+        return index < 0 ? int.MaxValue : index;
+    }
+
+    private static bool TryParseBold(string text, int index, out string body, out int length)
+    {
+        body = "";
+        length = 0;
+        if (!text.AsSpan(index).StartsWith("**", StringComparison.Ordinal))
+            return false;
+
+        var end = text.IndexOf("**", index + 2, StringComparison.Ordinal);
+        if (end < 0)
+            return false;
+
+        body = text[(index + 2)..end];
+        length = end + 2 - index;
+        return true;
+    }
+
+    private static bool TryParseInlineMath(string text, int index, out string formula, out int length)
+    {
+        formula = "";
+        length = 0;
+        if (text[index] == '$')
+        {
+            if (index + 1 < text.Length && text[index + 1] == '$')
+                return false;
+
+            var end = text.IndexOf('$', index + 1);
+            if (end <= index + 1)
+                return false;
+
+            formula = text[(index + 1)..end];
+            length = end + 1 - index;
+            return true;
+        }
+
+        if (!text.AsSpan(index).StartsWith(@"\(", StringComparison.Ordinal))
+            return false;
+
+        var close = text.IndexOf(@"\)", index + 2, StringComparison.Ordinal);
+        if (close <= index + 2)
+            return false;
+
+        formula = text[(index + 2)..close];
+        length = close + 2 - index;
+        return true;
+    }
+
+    private static bool TryParseColorTag(
+        string text,
+        int index,
+        IMarkdownColorRenderer colorRenderer,
+        out string body,
+        out MarkdownInlineStyle style,
+        out int length)
+    {
+        body = "";
+        style = default;
+        length = 0;
+        if (text[index] != '<')
+            return false;
+
+        var remaining = text[index..];
+        var match = Regex.Match(
+            remaining,
+            @"^<(?<name>hl|mark)\s+type=['""](?<type>[A-Za-z]+)['""]>(?<body>.*?)</\k<name>>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        if (!match.Success)
+        {
+            match = Regex.Match(
+                remaining,
+                @"^<(?<type>key|term|accent|warn|warning|ok|success|note|info|emphasis)>(?<body>.*?)</\k<type>>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        }
+
+        if (!match.Success)
+            return false;
+
+        body = match.Groups["body"].Value;
+        colorRenderer.TryGetStyle(match.Groups["type"].Value, out style);
+        length = match.Length;
+        return true;
+    }
+
+    private static void AddRun(TextBlock target, string text, MarkdownInlineStyle style)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        var run = new Run(text)
+        {
+            FontWeight = style.FontWeight ?? FontWeight.Normal,
+            FontSize = style.FontSize ?? target.FontSize,
+        };
+
+        if (style.Foreground != null)
+            run.Foreground = style.Foreground;
+        if (!string.IsNullOrWhiteSpace(style.FontFamily))
+            run.FontFamily = new FontFamily(style.FontFamily);
+
+        target.Inlines?.Add(run);
     }
 }

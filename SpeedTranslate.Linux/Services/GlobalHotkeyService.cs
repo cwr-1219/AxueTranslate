@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using SharpHook;
 using SharpHook.Native;
 using SpeedTranslate.Linux.Models;
@@ -16,6 +18,7 @@ public sealed class GlobalHotkeyService : IDisposable
 
     private bool _ctrl, _alt, _shift, _meta;
     private bool _suppressed;
+    private int _isStopping;
 
     public bool IsRunning { get; private set; }
 
@@ -34,19 +37,20 @@ public sealed class GlobalHotkeyService : IDisposable
     public void Start()
     {
         if (IsRunning) return;
-        _hook = new TaskPoolGlobalHook();
-        _hook.KeyPressed += OnKeyPressed;
-        _hook.KeyReleased += OnKeyReleased;
-        _hook.HookEnabled += (_, _) => DebugLog.Write("[Hook] enabled");
-        _hook.HookDisabled += (_, _) => DebugLog.Write("[Hook] disabled");
+        var hook = new TaskPoolGlobalHook();
+        _hook = hook;
+        hook.KeyPressed += OnKeyPressed;
+        hook.KeyReleased += OnKeyReleased;
+        hook.HookEnabled += (_, _) => DebugLog.Write("[Hook] enabled");
+        hook.HookDisabled += (_, _) => DebugLog.Write("[Hook] disabled");
         IsRunning = true;
         // 在后台运行钩子，捕获任何启动失败
-        _ = System.Threading.Tasks.Task.Run(async () =>
+        _ = Task.Run(async () =>
         {
             try
             {
                 DebugLog.Write("[Hook] RunAsync starting");
-                await _hook.RunAsync();
+                await hook.RunAsync();
                 DebugLog.Write("[Hook] RunAsync exited");
             }
             catch (Exception ex)
@@ -59,14 +63,30 @@ public sealed class GlobalHotkeyService : IDisposable
 
     public void Stop()
     {
-        if (!IsRunning) return;
-        try
-        {
-            _hook?.Dispose();
-        }
-        catch { }
+        if (!IsRunning && _hook == null) return;
+        if (Interlocked.Exchange(ref _isStopping, 1) == 1) return;
+
+        var hook = _hook;
         _hook = null;
         IsRunning = false;
+
+        if (hook == null) return;
+
+        // SharpHook Dispose can block while native hooks are unwinding. Do not
+        // let tray exit hang the Avalonia UI thread.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                DebugLog.Write("[Hook] disposing");
+                hook.Dispose();
+                DebugLog.Write("[Hook] disposed");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"[Hook] dispose exception: {ex.GetType().Name}: {ex.Message}");
+            }
+        });
     }
 
     private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)

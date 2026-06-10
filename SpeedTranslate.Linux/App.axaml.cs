@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -19,6 +22,7 @@ public partial class App : Application
     private GlobalHotkeyService? _hotkey;
     private TrayIconService? _tray;
     private TranslationCoordinator? _coordinator;
+    private int _isExitStarted;
 
     public override void Initialize()
     {
@@ -55,22 +59,74 @@ public partial class App : Application
             // 托盘
             _tray = new TrayIconService(
                 onShowMainWindow: () => Dispatcher.UIThread.Post(() => _mainWindow?.ShowAndActivate()),
-                onExit: () => Dispatcher.UIThread.Post(() =>
-                {
-                    _coordinator?.CancelPendingWork();
-                    _mainWindow?.TriggerRealExit();
-                }));
+                onExit: () => Dispatcher.UIThread.Post(RequestExit));
             _tray.Initialize();
 
             desktop.ShutdownRequested += (_, _) =>
             {
-                _coordinator?.CancelPendingWork();
-                _hotkey?.Stop();
-                _tray?.Dispose();
+                DebugLog.Write("[App] Shutdown requested");
+                BeginShutdownCleanup();
             };
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void RequestExit()
+    {
+        if (Interlocked.Exchange(ref _isExitStarted, 1) == 1)
+            return;
+
+        DebugLog.Write("[App] Exit requested");
+        StartForceExitFallback();
+        BeginShutdownCleanup();
+
+        try
+        {
+            _mainWindow?.TriggerRealExit();
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write($"[App] Shutdown failed: {ex.GetType().Name}: {ex.Message}");
+            ForceTerminateProcess();
+        }
+    }
+
+    private void BeginShutdownCleanup()
+    {
+        _coordinator?.CancelPendingWork();
+        _hotkey?.Stop();
+
+        try
+        {
+            _tray?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Write($"[App] Tray dispose failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static void StartForceExitFallback()
+    {
+        _ = Task.Run(() =>
+        {
+            Thread.Sleep(500);
+            DebugLog.Write("[App] Force exit fallback");
+            ForceTerminateProcess();
+        });
+    }
+
+    private static void ForceTerminateProcess()
+    {
+        try
+        {
+            Process.GetCurrentProcess().Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            Environment.FailFast("AxueTranslate forced exit fallback failed.");
+        }
     }
 
     private void ReregisterHotkey()

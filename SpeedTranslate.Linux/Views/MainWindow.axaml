@@ -5,9 +5,9 @@
         x:DataType="vm:MainWindowViewModel"
         Title="AxueTranslate"
         Width="440"
-        Height="600"
+        Height="700"
         MinWidth="440"
-        MinHeight="600"
+        MinHeight="700"
         Background="Transparent"
         TransparencyLevelHint="Transparent"
         SystemDecorations="None"
@@ -16,14 +16,14 @@
         ExtendClientAreaTitleBarHeightHint="-1"
         WindowStartupLocation="CenterScreen"
         CanResize="False"
-        FontFamily="Inter, Noto Sans CJK SC, Microsoft YaHei, sans-serif">
+        FontFamily="Noto Sans CJK SC, Microsoft YaHei, WenQuanYi Micro Hei, Inter, sans-serif">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
     <Border Background="#0E0B16" BorderBrush="#2D2547" BorderThickness="1" CornerRadius="12">
-        <Grid Margin="15" RowDefinitions="30,Auto,*,Auto">
+        <Grid Margin="15" RowDefinitions="34,Auto,*,Auto">
 
             <!-- 自定义标题栏 -->
             <Border Grid.Row="0"
@@ -35,7 +35,7 @@
                 <Grid Margin="15,0" ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="译" Foreground="#A855F7" FontWeight="Bold" FontSize="14" Margin="0,0,8,0" />
-                        <TextBlock Text="AxueTranslate" Foreground="#94A3B8" FontSize="11" FontWeight="SemiBold" />
+                        <TextBlock Text="AxueTranslate" Foreground="#94A3B8" FontSize="12" FontWeight="SemiBold" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -49,7 +49,7 @@
             <StackPanel Grid.Row="1" Margin="0,5,0,15">
                 <TextBlock Text="AxueTranslate" Foreground="#F1F5F9" FontSize="20" FontWeight="Bold" />
                 <TextBlock Text="后台运行中 · 选中文本按下快捷键自动翻译并替换"
-                           Foreground="#64748B" FontSize="11" Margin="0,3,0,0" />
+                           Foreground="#64748B" FontSize="12" Margin="0,3,0,0" />
             </StackPanel>
 
             <!-- 配置卡片区 -->
@@ -148,6 +148,60 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 卡片三：摘要与阅读 -->
+                    <Border Classes="Card">
+                        <StackPanel>
+                            <TextBlock Text="摘要与阅读" Classes="CardTitle" />
+                            <CheckBox Classes="Dark"
+                                      Content="长文本自动生成摘要"
+                                      Margin="0,2,0,10"
+                                      IsChecked="{Binding EnableAutoSummary, Mode=TwoWay}" />
+
+                            <Grid ColumnDefinitions="*,12,110">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="超过该长度自动摘要" Classes="Label" />
+                                    <TextBlock Text="短文本仍正常翻译，浮窗右上角可随时手动摘要"
+                                               Foreground="#64748B"
+                                               FontSize="12"
+                                               LineHeight="18"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2,0,0" />
+                                </StackPanel>
+                                <TextBox Grid.Column="2"
+                                         Classes="Input"
+                                         TextAlignment="Center"
+                                         Text="{Binding AutoSummaryMinLength, Mode=TwoWay}" />
+                            </Grid>
+
+                            <Border Height="1" Background="#2D2547" Margin="0,14,0,12" />
+
+                            <CheckBox Classes="Dark"
+                                      Content="渲染 Markdown 数学公式"
+                                      Margin="0,0,0,8"
+                                      IsChecked="{Binding EnableMarkdownMathRendering, Mode=TwoWay}" />
+                            <CheckBox Classes="Dark"
+                                      Content="启用彩色语义标签"
+                                      Margin="0,0,0,10"
+                                      IsChecked="{Binding EnableMarkdownColorRendering, Mode=TwoWay}" />
+
+                            <Grid ColumnDefinitions="*,12,150">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="颜色渲染模式" Classes="Label" />
+                                    <TextBlock Text="开启后模型会输出少量受控标签，浮窗按标签着色"
+                                               Foreground="#64748B"
+                                               FontSize="12"
+                                               LineHeight="18"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2,0,0" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="2"
+                                          Classes="Modern"
+                                          ItemsSource="{Binding MarkdownColorModeOptions}"
+                                          SelectedIndex="{Binding MarkdownColorModeIndex, Mode=TwoWay}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
 
@@ -159,7 +213,7 @@
                         HorizontalContentAlignment="Center"
                         Command="{Binding SaveCommand}" />
                 <TextBlock Text="双击右下角系统托盘图标可重新打开设置界面"
-                           Foreground="#475569" FontSize="10" Margin="0,8,0,0"
+                           Foreground="#475569" FontSize="12" Margin="0,8,0,0"
                            HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>

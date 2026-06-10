@@ -21,6 +21,7 @@ public sealed class TranslationCoordinator
     private readonly InputSimulator _input = new();
     private readonly ClipboardService _clipboard = new();
     private readonly CancellationTokenSource _shutdownCts = new();
+    private int _isShutdownCancellationStarted;
     private int _isTranslating;
 
     public TranslationCoordinator(MainWindowViewModel vm, TranslationStatusWindow statusWindow)
@@ -46,10 +47,33 @@ public sealed class TranslationCoordinator
 
     public void CancelPendingWork()
     {
-        if (_shutdownCts.IsCancellationRequested) return;
+        if (Interlocked.Exchange(ref _isShutdownCancellationStarted, 1) == 1)
+            return;
 
         DebugLog.Write("[Coord] cancel pending work");
-        _shutdownCts.Cancel();
+
+        // Cancellation callbacks can run synchronously inside Cancel(). Keep
+        // tray-exit/UI-thread shutdown responsive even if a network request is
+        // in the middle of being aborted.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _shutdownCts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        });
+    }
+
+    public static bool ShouldAutoSummarize(string text, AppConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !config.EnableAutoSummary)
+            return false;
+
+        var threshold = Math.Clamp(config.AutoSummaryMinLength, 300, 20000);
+        return text.Length >= threshold;
     }
 
     private async Task RunTooltipFlowAsync(CancellationToken cancellationToken)
@@ -111,8 +135,12 @@ public sealed class TranslationCoordinator
                 return;
             }
 
-            DebugLog.Write($"[Coord] tooltip: calling LLM (lang={config.TargetLanguage})");
-            var translated = await _llm.TranslateAsync(sourceText, config, cancellationToken);
+            var useSummary = ShouldAutoSummarize(sourceText, config);
+            DebugLog.Write(
+                $"[Coord] tooltip: calling LLM ({(useSummary ? "summary" : "translation")}, lang={config.TargetLanguage})");
+            var translated = useSummary
+                ? await _llm.SummarizeAsync(sourceText, config, cancellationToken)
+                : await _llm.TranslateAsync(sourceText, config, cancellationToken);
             DebugLog.Write($"[Coord] tooltip: LLM returned (len={translated.Length}): {Trunc(translated)}");
 
             // 隐藏 loading 窗，弹出浮窗
@@ -122,7 +150,7 @@ public sealed class TranslationCoordinator
                 if (_tooltipWindow != null)
                 {
                     _tooltipWindow.ShowTooltip(
-                        sourceText, translated, config, _llm, _input, cursorPos, cancellationToken);
+                        sourceText, translated, config, _llm, _input, cursorPos, cancellationToken, useSummary);
                 }
             }, cancellationToken);
 

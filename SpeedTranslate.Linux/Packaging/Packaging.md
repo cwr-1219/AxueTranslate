@@ -64,17 +64,17 @@ dotnet workload install ...      # if cross-compiling from x86_64
 ## Override the version
 
 ```sh
-VERSION=1.1.0 ./build-deb.sh
+VERSION=1.2.0 ./build-deb.sh
 ```
 
 ## Install / uninstall
 
 ```sh
 # Install (recommended — auto-resolves dependencies):
-sudo apt install ./ReleaseSetup/axue-translate_1.0.1_amd64.deb
+sudo apt install ./ReleaseSetup/axue-translate_1.2.0_amd64.deb
 
 # Or:
-sudo dpkg -i ./ReleaseSetup/axue-translate_1.0.1_amd64.deb
+sudo dpkg -i ./ReleaseSetup/axue-translate_1.2.0_amd64.deb
 sudo apt-get install -f          # pull missing deps if dpkg flagged any
 
 # Uninstall:
