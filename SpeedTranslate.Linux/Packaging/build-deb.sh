@@ -20,7 +20,7 @@ RELEASE_DIR="$REPO_ROOT/ReleaseSetup"
 
 # --- Configuration (override via env) -----------------------------------------
 PKG_NAME="${PKG_NAME:-axue-translate}"
-VERSION="${VERSION:-1.2.1}"
+VERSION="${VERSION:-1.2.2}"
 ARCH="${ARCH:-amd64}"
 RID="${RID:-linux-x64}"
 CONFIG="${CONFIG:-Release}"

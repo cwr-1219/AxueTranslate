@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Markdown color renderer factory respects enable flag", TestMarkdownColorRendererFactory),
     ("Markdown color tags are stripped for plain output", TestMarkdownOutputSanitizer),
     ("LLMService adds semantic color tag prompt only when enabled", TestMarkdownRenderingPrompt),
+    ("LLMService builds semantic color prompt from background thread", TestMarkdownRenderingPromptFromBackgroundThread),
     ("LLMService uses a longer timeout for long text", TestLongTextUsesLongerTimeout),
     ("TranslationTooltipWindow keeps short text compact and expands long text", TestTooltipLayoutExpandsForLongText),
 };
@@ -294,6 +295,19 @@ static Task TestMarkdownRenderingPrompt()
         throw new Exception("Markdown rendering prompt should request semantic tags when enabled.");
 
     return Task.CompletedTask;
+}
+
+static async Task TestMarkdownRenderingPromptFromBackgroundThread()
+{
+    var config = new AppConfig
+    {
+        EnableMarkdownColorRendering = true,
+        MarkdownColorRenderMode = MarkdownColorRenderModes.SemanticTags,
+    };
+
+    var prompt = await Task.Run(() => LLMService.BuildMarkdownRenderingPrompt(config));
+    if (!prompt.Contains("<key>"))
+        throw new Exception("Expected semantic color prompt from background thread.");
 }
 
 static Task TestLongTextUsesLongerTimeout()

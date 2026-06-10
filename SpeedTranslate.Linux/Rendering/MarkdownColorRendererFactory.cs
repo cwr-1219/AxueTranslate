@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using SpeedTranslate.Linux.Models;
 
 namespace SpeedTranslate.Linux.Rendering;
@@ -95,5 +96,5 @@ internal sealed class SemanticTagMarkdownColorRenderer : IMarkdownColorRenderer
         Styles.TryGetValue(tagName, out style);
 
     private static MarkdownInlineStyle Style(byte r, byte g, byte b) =>
-        new(new SolidColorBrush(Color.FromRgb(r, g, b)), FontWeight.SemiBold, null, null);
+        new(new ImmutableSolidColorBrush(Color.FromRgb(r, g, b)), FontWeight.SemiBold, null, null);
 }

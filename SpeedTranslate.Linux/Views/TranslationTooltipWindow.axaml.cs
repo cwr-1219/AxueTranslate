@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using SpeedTranslate.Linux.Models;
 using SpeedTranslate.Linux.Rendering;
@@ -23,7 +24,7 @@ public partial class TranslationTooltipWindow : Window
     private const double MaxLongTextWidth = 680;
     private const double MaxLongTextContentHeight = 560;
     private const string MathFontFamily = "Noto Sans Math, Noto Sans Mono, Consolas, monospace";
-    private static readonly IBrush MathBrush = new SolidColorBrush(Color.Parse("#67E8F9"));
+    private static readonly IBrush MathBrush = new ImmutableSolidColorBrush(Color.FromRgb(0x67, 0xE8, 0xF9));
 
     private bool _isClosing;
     private string _translatedText = "";
