@@ -20,6 +20,7 @@ public sealed class TranslationCoordinator
     private readonly LLMService _llm = new();
     private readonly InputSimulator _input = new();
     private readonly ClipboardService _clipboard = new();
+    private readonly CancellationTokenSource _shutdownCts = new();
     private int _isTranslating;
 
     public TranslationCoordinator(MainWindowViewModel vm, TranslationStatusWindow statusWindow)
@@ -35,15 +36,23 @@ public sealed class TranslationCoordinator
 
     public void Trigger()
     {
-        _ = Task.Run(RunFlowAsync);
+        _ = Task.Run(() => RunFlowAsync(_shutdownCts.Token));
     }
 
     public void TriggerTooltip()
     {
-        _ = Task.Run(RunTooltipFlowAsync);
+        _ = Task.Run(() => RunTooltipFlowAsync(_shutdownCts.Token));
     }
 
-    private async Task RunTooltipFlowAsync()
+    public void CancelPendingWork()
+    {
+        if (_shutdownCts.IsCancellationRequested) return;
+
+        DebugLog.Write("[Coord] cancel pending work");
+        _shutdownCts.Cancel();
+    }
+
+    private async Task RunTooltipFlowAsync(CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _isTranslating, 1) == 1)
         {
@@ -54,6 +63,8 @@ public sealed class TranslationCoordinator
         DebugLog.Write("[Coord] tooltip flow start");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var config = _vm.CurrentConfig;
             if (!config.EnableSelectionMode && !config.EnableAllTextMode)
             {
@@ -66,7 +77,7 @@ public sealed class TranslationCoordinator
             DebugLog.Write($"[Coord] tooltip: cursor at ({cx},{cy})");
 
             // 显示 loading 状态窗
-            await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.ShowAtCursor(cx, cy));
+            await InvokeOnUiThreadAsync(() => _statusWindow.ShowAtCursor(cx, cy), cancellationToken);
 
             string sourceText = "";
 
@@ -96,33 +107,39 @@ public sealed class TranslationCoordinator
             if (string.IsNullOrWhiteSpace(sourceText))
             {
                 DebugLog.Write("[Coord] tooltip: no source text, hide and exit");
-                await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.HideWithFade());
+                await InvokeOnUiThreadAsync(() => _statusWindow.HideWithFade(), cancellationToken);
                 return;
             }
 
             DebugLog.Write($"[Coord] tooltip: calling LLM (lang={config.TargetLanguage})");
-            var translated = await _llm.TranslateAsync(sourceText, config);
+            var translated = await _llm.TranslateAsync(sourceText, config, cancellationToken);
             DebugLog.Write($"[Coord] tooltip: LLM returned (len={translated.Length}): {Trunc(translated)}");
 
             // 隐藏 loading 窗，弹出浮窗
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            await InvokeOnUiThreadAsync(() =>
             {
                 _statusWindow.HideWithFade();
                 if (_tooltipWindow != null)
                 {
                     _tooltipWindow.ShowTooltip(
-                        sourceText, translated, config, _llm, _input, cursorPos);
+                        sourceText, translated, config, _llm, _input, cursorPos, cancellationToken);
                 }
-            });
+            }, cancellationToken);
 
             DebugLog.Write("[Coord] tooltip flow OK");
         }
         catch (Exception ex)
         {
+            if (IsExitCancellation(ex, cancellationToken))
+            {
+                DebugLog.Write("[Coord] tooltip flow canceled");
+                return;
+            }
+
             DebugLog.Write($"[Coord] tooltip exception: {ex.GetType().Name}: {ex.Message}");
             ConfigManager.WriteErrorLog("TooltipFlow", ex);
             var friendly = MapErrorMessage(ex.Message);
-            await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.ShowError(friendly));
+            await InvokeOnUiThreadAsync(() => _statusWindow.ShowError(friendly), cancellationToken);
         }
         finally
         {
@@ -131,7 +148,7 @@ public sealed class TranslationCoordinator
         }
     }
 
-    private async Task RunFlowAsync()
+    private async Task RunFlowAsync(CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _isTranslating, 1) == 1)
         {
@@ -142,6 +159,8 @@ public sealed class TranslationCoordinator
         DebugLog.Write("[Coord] flow start");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var config = _vm.CurrentConfig;
             if (!config.EnableSelectionMode && !config.EnableAllTextMode)
             {
@@ -161,7 +180,7 @@ public sealed class TranslationCoordinator
             // 2. 显示翻译中悬浮窗
             var (cx, cy) = X11Mouse.GetPosition();
             DebugLog.Write($"[Coord] cursor at ({cx},{cy})");
-            await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.ShowAtCursor(cx, cy));
+            await InvokeOnUiThreadAsync(() => _statusWindow.ShowAtCursor(cx, cy), cancellationToken);
 
             string sourceText = "";
             var isAllTextMode = false;
@@ -200,45 +219,60 @@ public sealed class TranslationCoordinator
                 if (string.IsNullOrWhiteSpace(sourceText))
                 {
                     DebugLog.Write("[Coord] no source text, hide and exit");
-                    await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.HideWithFade());
+                    await InvokeOnUiThreadAsync(() => _statusWindow.HideWithFade(), cancellationToken);
                     return;
                 }
 
                 DebugLog.Write($"[Coord] calling LLM (model={config.SelectedModel}, lang={config.TargetLanguage})");
-                var translated = await _llm.TranslateAsync(sourceText, config);
+                var translated = await _llm.TranslateAsync(sourceText, config, cancellationToken);
                 DebugLog.Write($"[Coord] LLM returned (len={translated.Length}): {Trunc(translated)}");
 
                 // 6. 写入翻译结果剪贴板
+                cancellationToken.ThrowIfCancellationRequested();
                 await _clipboard.SetClipboardTextAsync(translated);
                 DebugLog.Write("[Coord] wrote translated text to clipboard");
 
                 // 7. 隐藏悬浮窗后再粘贴，避免抢焦点
-                await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.HideWithFade());
+                await InvokeOnUiThreadAsync(() => _statusWindow.HideWithFade(), cancellationToken);
 
                 if (isAllTextMode)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     await _input.SendSelectAllAsync(targetWindow);
                     DebugLog.Write("[Coord] sent Ctrl+A before paste (all-text mode)");
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 await _input.SendPasteAsync(targetWindow);
                 DebugLog.Write("[Coord] sent Ctrl+V");
                 DebugLog.Write("[Coord] flow OK");
             }
             catch (Exception ex)
             {
+                if (IsExitCancellation(ex, cancellationToken))
+                {
+                    DebugLog.Write("[Coord] flow canceled");
+                    return;
+                }
+
                 DebugLog.Write($"[Coord] inner exception: {ex.GetType().Name}: {ex.Message}");
                 ConfigManager.WriteErrorLog("翻译流程异常", ex);
                 var friendly = MapErrorMessage(ex.Message);
-                await Dispatcher.UIThread.InvokeAsync(() => _statusWindow.ShowError(friendly));
+                await InvokeOnUiThreadAsync(() => _statusWindow.ShowError(friendly), cancellationToken);
             }
             finally
             {
                 // 8. Linux 桌面下保留翻译结果在剪贴板，便于用户进一步使用
-                await Task.Delay(500);
+                await Task.Delay(500, cancellationToken);
             }
         }
         catch (Exception ex)
         {
+            if (IsExitCancellation(ex, cancellationToken))
+            {
+                DebugLog.Write("[Coord] outer flow canceled");
+                return;
+            }
+
             DebugLog.Write($"[Coord] outer exception: {ex.Message}");
             ConfigManager.WriteErrorLog("Coordinator outer", ex);
         }
@@ -248,6 +282,16 @@ public sealed class TranslationCoordinator
             DebugLog.Write("[Coord] flow end");
         }
     }
+
+    private static async Task InvokeOnUiThreadAsync(Action action, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await Dispatcher.UIThread.InvokeAsync(action);
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private static bool IsExitCancellation(Exception _, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested;
 
     private static string Trunc(string s) => s.Length > 80 ? s[..80] + "..." : s;
 

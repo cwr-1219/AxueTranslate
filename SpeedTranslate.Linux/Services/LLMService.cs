@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using SpeedTranslate.Linux.Models;
 
@@ -14,11 +15,16 @@ public class LLMService
 {
     private static readonly HttpClient HttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(15),
+        Timeout = Timeout.InfiniteTimeSpan,
     };
 
-    public async Task<string> TranslateAsync(string text, AppConfig config)
+    public async Task<string> TranslateAsync(
+        string text,
+        AppConfig config,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
@@ -62,8 +68,22 @@ CRITICAL RULES:
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
         request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        var response = await HttpClient.SendAsync(request);
-        var responseContent = await response.Content.ReadAsStringAsync();
+        var timeout = GetRequestTimeout(text);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        HttpResponseMessage response;
+        string responseContent;
+        try
+        {
+            response = await HttpClient.SendAsync(request, timeoutCts.Token);
+            responseContent = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"API 请求超时（已等待 {timeout.TotalSeconds:0} 秒）。请稍后重试，或减少一次翻译的文本长度。");
+        }
 
         if (!response.IsSuccessStatusCode)
             throw new Exception($"API 请求失败 (HTTP {(int)response.StatusCode}): {responseContent}");
@@ -76,6 +96,18 @@ CRITICAL RULES:
             ?? throw new Exception("模型响应内容为空。");
 
         return CleanTranslatedText(translatedText);
+    }
+
+    public static TimeSpan GetRequestTimeout(string text)
+    {
+        var length = text?.Length ?? 0;
+        return length switch
+        {
+            <= 600 => TimeSpan.FromSeconds(15),
+            <= 2000 => TimeSpan.FromSeconds(45),
+            <= 5000 => TimeSpan.FromSeconds(90),
+            _ => TimeSpan.FromSeconds(120),
+        };
     }
 
     public async Task<List<string>> GetAvailableModelsAsync(string apiUrl, string apiKey)

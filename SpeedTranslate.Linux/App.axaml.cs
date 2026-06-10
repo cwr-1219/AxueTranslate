@@ -55,11 +55,16 @@ public partial class App : Application
             // 托盘
             _tray = new TrayIconService(
                 onShowMainWindow: () => Dispatcher.UIThread.Post(() => _mainWindow?.ShowAndActivate()),
-                onExit: () => Dispatcher.UIThread.Post(() => _mainWindow?.TriggerRealExit()));
+                onExit: () => Dispatcher.UIThread.Post(() =>
+                {
+                    _coordinator?.CancelPendingWork();
+                    _mainWindow?.TriggerRealExit();
+                }));
             _tray.Initialize();
 
             desktop.ShutdownRequested += (_, _) =>
             {
+                _coordinator?.CancelPendingWork();
                 _hotkey?.Stop();
                 _tray?.Dispose();
             };

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -9,14 +10,22 @@ using SpeedTranslate.Linux.Services;
 
 namespace SpeedTranslate.Linux.Views;
 
+public readonly record struct TooltipLayoutMetrics(double Width, double ContentMaxHeight);
+
 public partial class TranslationTooltipWindow : Window
 {
+    private const double CompactWidth = 350;
+    private const double CompactContentMaxHeight = 220;
+    private const double MaxLongTextWidth = 680;
+    private const double MaxLongTextContentHeight = 560;
+
     private bool _isClosing;
     private string _translatedText = "";
     private string _originalText = "";
     private AppConfig? _config;
     private LLMService? _llmService;
     private InputSimulator? _inputSimulator;
+    private CancellationToken _shutdownToken;
 
     // 锚点：首次弹出时记录，防止内容变化时浮窗乱跑
     private PixelPoint _anchor = new(-9999, -9999);
@@ -35,7 +44,8 @@ public partial class TranslationTooltipWindow : Window
         AppConfig config,
         LLMService llmService,
         InputSimulator inputSimulator,
-        PixelPoint cursorPos)
+        PixelPoint cursorPos,
+        CancellationToken shutdownToken = default)
     {
         _isClosing = false;
         _originalText = originalText;
@@ -43,6 +53,7 @@ public partial class TranslationTooltipWindow : Window
         _config = config;
         _llmService = llmService;
         _inputSimulator = inputSimulator;
+        _shutdownToken = shutdownToken;
 
         // 填充内容
         var modelTag = this.FindControl<TextBlock>("ModelTagText");
@@ -70,6 +81,7 @@ public partial class TranslationTooltipWindow : Window
 
         // 计算锚点（鼠标右下方偏移）
         _anchor = ComputePosition(cursorPos);
+        ApplyLayoutForText(translatedText);
 
         // 先移出屏幕外再 Show，避免闪烁
         Position = new PixelPoint(-9999, -9999);
@@ -88,6 +100,7 @@ public partial class TranslationTooltipWindow : Window
     public void UpdateTranslatedText(string text)
     {
         _translatedText = text;
+        ApplyLayoutForText(text);
         var tb = this.FindControl<TextBlock>("TranslatedTextBlock");
         if (tb != null) tb.Text = text;
         RepositionIfNeeded();
@@ -124,6 +137,46 @@ public partial class TranslationTooltipWindow : Window
         if (y < workArea.Y) y = workArea.Y + 10;
 
         Position = new PixelPoint(x, y);
+    }
+
+    public static TooltipLayoutMetrics CalculateLayoutMetrics(
+        int textLength,
+        double workAreaWidth,
+        double workAreaHeight)
+    {
+        var width = textLength switch
+        {
+            <= 300 => CompactWidth,
+            <= 900 => 440,
+            <= 1800 => 560,
+            _ => MaxLongTextWidth,
+        };
+
+        var contentMaxHeight = textLength switch
+        {
+            <= 300 => CompactContentMaxHeight,
+            <= 900 => 320,
+            <= 1800 => 440,
+            _ => MaxLongTextContentHeight,
+        };
+
+        var boundedWidth = Math.Min(width, Math.Max(CompactWidth, workAreaWidth - 80));
+        var boundedHeight = Math.Min(contentMaxHeight, Math.Max(CompactContentMaxHeight, workAreaHeight - 220));
+        return new TooltipLayoutMetrics(boundedWidth, boundedHeight);
+    }
+
+    private void ApplyLayoutForText(string text)
+    {
+        var workArea = Screens?.ScreenFromPoint(_anchor)?.WorkingArea
+            ?? Screens?.Primary?.WorkingArea
+            ?? new PixelRect(0, 0, 1366, 768);
+        var layout = CalculateLayoutMetrics(text.Length, workArea.Width, workArea.Height);
+
+        Width = layout.Width;
+        if (this.FindControl<ScrollViewer>("ContentScrollViewer") is { } scrollViewer)
+        {
+            scrollViewer.MaxHeight = layout.ContentMaxHeight;
+        }
     }
 
     // ── 动画 ──────────────────────────────────────────────────────────────────
@@ -191,8 +244,13 @@ public partial class TranslationTooltipWindow : Window
 
         try
         {
-            var result = await _llmService.TranslateAsync(_originalText, _config);
+            _shutdownToken.ThrowIfCancellationRequested();
+            var result = await _llmService.TranslateAsync(_originalText, _config, _shutdownToken);
+            _shutdownToken.ThrowIfCancellationRequested();
             UpdateTranslatedText(result);
+        }
+        catch (OperationCanceledException) when (_shutdownToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
