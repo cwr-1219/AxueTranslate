@@ -70,6 +70,7 @@ public static class ConfigManager
             Directory.CreateDirectory(ConfigDir);
             var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {context}\n" +
                        $"异常消息: {ex.Message}\n" +
+                       $"{FormatInnerException(ex)}" +
                        $"堆栈: {ex.StackTrace}\n" +
                        new string('-', 60) + "\n";
             File.AppendAllText(ErrorLogPath, line);
@@ -77,5 +78,13 @@ public static class ConfigManager
         catch
         {
         }
+    }
+
+    private static string FormatInnerException(Exception ex)
+    {
+        if (ex.InnerException == null)
+            return "";
+
+        return $"内部异常: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}\n";
     }
 }

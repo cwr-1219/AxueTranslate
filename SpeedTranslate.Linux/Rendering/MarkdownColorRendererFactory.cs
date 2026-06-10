@@ -59,16 +59,16 @@ internal sealed class SemanticTagMarkdownColorRenderer : IMarkdownColorRenderer
     private static readonly Dictionary<string, MarkdownInlineStyle> Styles = new(
         StringComparer.OrdinalIgnoreCase)
     {
-        ["key"] = Style("#FBBF24"),
-        ["term"] = Style("#C084FC"),
-        ["accent"] = Style("#38BDF8"),
-        ["warn"] = Style("#F87171"),
-        ["warning"] = Style("#F87171"),
-        ["ok"] = Style("#34D399"),
-        ["success"] = Style("#34D399"),
-        ["note"] = Style("#60A5FA"),
-        ["info"] = Style("#60A5FA"),
-        ["emphasis"] = Style("#FBBF24"),
+        ["key"] = Style(0xFB, 0xBF, 0x24),
+        ["term"] = Style(0xC0, 0x84, 0xFC),
+        ["accent"] = Style(0x38, 0xBD, 0xF8),
+        ["warn"] = Style(0xF8, 0x71, 0x71),
+        ["warning"] = Style(0xF8, 0x71, 0x71),
+        ["ok"] = Style(0x34, 0xD3, 0x99),
+        ["success"] = Style(0x34, 0xD3, 0x99),
+        ["note"] = Style(0x60, 0xA5, 0xFA),
+        ["info"] = Style(0x60, 0xA5, 0xFA),
+        ["emphasis"] = Style(0xFB, 0xBF, 0x24),
     };
 
     public string Mode => MarkdownColorRenderModes.SemanticTags;
@@ -94,6 +94,6 @@ internal sealed class SemanticTagMarkdownColorRenderer : IMarkdownColorRenderer
     public bool TryGetStyle(string tagName, out MarkdownInlineStyle style) =>
         Styles.TryGetValue(tagName, out style);
 
-    private static MarkdownInlineStyle Style(string color) =>
-        new(new SolidColorBrush(Color.Parse(color)), FontWeight.SemiBold, null, null);
+    private static MarkdownInlineStyle Style(byte r, byte g, byte b) =>
+        new(new SolidColorBrush(Color.FromRgb(r, g, b)), FontWeight.SemiBold, null, null);
 }
