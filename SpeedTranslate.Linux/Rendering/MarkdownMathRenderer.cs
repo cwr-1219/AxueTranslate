@@ -15,18 +15,27 @@ public static class MarkdownMathRenderer
         ["theta"] = "θ",
         ["lambda"] = "λ",
         ["mu"] = "μ",
+        ["nu"] = "ν",
+        ["rho"] = "ρ",
         ["pi"] = "π",
         ["sigma"] = "σ",
+        ["tau"] = "τ",
         ["phi"] = "φ",
+        ["psi"] = "ψ",
         ["omega"] = "ω",
+        ["Gamma"] = "Γ",
         ["Delta"] = "Δ",
         ["Theta"] = "Θ",
         ["Lambda"] = "Λ",
+        ["Xi"] = "Ξ",
         ["Pi"] = "Π",
         ["Sigma"] = "Σ",
+        ["Phi"] = "Φ",
+        ["Psi"] = "Ψ",
         ["Omega"] = "Ω",
         ["times"] = "×",
         ["cdot"] = "·",
+        ["div"] = "÷",
         ["pm"] = "±",
         ["mp"] = "∓",
         ["le"] = "≤",
@@ -36,12 +45,42 @@ public static class MarkdownMathRenderer
         ["neq"] = "≠",
         ["approx"] = "≈",
         ["infty"] = "∞",
+        ["in"] = "∈",
+        ["notin"] = "∉",
+        ["subset"] = "⊂",
+        ["subseteq"] = "⊆",
+        ["supset"] = "⊃",
+        ["supseteq"] = "⊇",
+        ["cup"] = "∪",
+        ["cap"] = "∩",
+        ["forall"] = "∀",
+        ["exists"] = "∃",
+        ["partial"] = "∂",
+        ["nabla"] = "∇",
+        ["neg"] = "¬",
+        ["land"] = "∧",
+        ["lor"] = "∨",
         ["to"] = "→",
         ["rightarrow"] = "→",
         ["leftarrow"] = "←",
+        ["Rightarrow"] = "⇒",
+        ["Leftarrow"] = "⇐",
+        ["Leftrightarrow"] = "⇔",
         ["sum"] = "∑",
         ["prod"] = "∏",
         ["int"] = "∫",
+        ["ldots"] = "…",
+        ["dots"] = "…",
+        ["log"] = "log",
+        ["ln"] = "ln",
+        ["sin"] = "sin",
+        ["cos"] = "cos",
+        ["tan"] = "tan",
+        ["exp"] = "exp",
+        ["min"] = "min",
+        ["max"] = "max",
+        ["argmin"] = "argmin",
+        ["argmax"] = "argmax",
     };
 
     private static readonly Dictionary<char, char> Superscript = new()
@@ -68,7 +107,7 @@ public static class MarkdownMathRenderer
         if (string.IsNullOrWhiteSpace(latex))
             return "";
 
-        var text = StripMathDelimiters(latex.Trim());
+        var text = StripMathDelimiters(NormalizeLatexEscapes(latex.Trim()));
         text = text
             .Replace(@"\left", "")
             .Replace(@"\right", "")
@@ -79,6 +118,10 @@ public static class MarkdownMathRenderer
         // Run a few passes so simple nested constructs such as \frac{x_1}{y^2} settle.
         for (var i = 0; i < 4; i++)
         {
+            text = Regex.Replace(
+                text,
+                @"\\(?:mathrm|mathbf|mathit|text|operatorname|mathbb|mathcal)\s*\{([^{}]+)\}",
+                m => ToDisplayText(m.Groups[1].Value));
             text = Regex.Replace(
                 text,
                 @"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}",
@@ -104,6 +147,11 @@ public static class MarkdownMathRenderer
 
         return Regex.Replace(text, @"\s+", " ").Trim();
     }
+
+    private static string NormalizeLatexEscapes(string text) =>
+        // Some providers return Markdown-visible math as \\(...\\) or \\frac.
+        // Collapse those doubled slashes before delimiter stripping and command lookup.
+        text.Replace(@"\\", @"\");
 
     private static string StripMathDelimiters(string text)
     {

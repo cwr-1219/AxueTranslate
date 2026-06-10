@@ -24,7 +24,23 @@ public partial class TranslationTooltipWindow : Window
     private const double MaxLongTextWidth = 680;
     private const double MaxLongTextContentHeight = 560;
     private const string MathFontFamily = "Noto Sans Math, Noto Sans Mono, Consolas, monospace";
+    private const int MaxAutoHighlights = 8;
     private static readonly IBrush MathBrush = new ImmutableSolidColorBrush(Color.FromRgb(0x67, 0xE8, 0xF9));
+    private static readonly Regex AutoWarnRegex = new(
+        "(失败|错误|风险|限制|问题|缺点|不足|挑战|超时|异常)",
+        RegexOptions.Compiled);
+    private static readonly Regex AutoOkRegex = new(
+        "(结论|优势|成功|提升|有效|关键|核心)",
+        RegexOptions.Compiled);
+    private static readonly Regex AutoAcronymRegex = new(
+        @"\b[A-Z][A-Z0-9]{1,}(?:[-_/][A-Z0-9]+)*\b",
+        RegexOptions.Compiled);
+    private static readonly Regex AutoTechnicalTermRegex = new(
+        @"[\u4e00-\u9fffA-Za-z0-9]{1,18}(模型|网络|算法|机制|方法|嵌入|编码|注意力|复杂度|表示|训练|数据|公式|结果)",
+        RegexOptions.Compiled);
+    private static readonly Regex AutoNumberRegex = new(
+        @"\b\d+(?:\.\d+)?(?:%|[a-zA-Z]+)\b",
+        RegexOptions.Compiled);
 
     private bool _isClosing;
     private string _translatedText = "";
@@ -398,6 +414,9 @@ public partial class TranslationTooltipWindow : Window
 
         var lines = markdown.Replace("\r\n", "\n").Split('\n');
         var colorRenderer = MarkdownColorRendererFactory.Create(options.EnableColorRendering, options.ColorRenderMode);
+        // If the model omits semantic tags, add a few display-only highlights without mutating the output text.
+        var autoHighlightPlainText = options.EnableColorRendering && !ContainsColorTags(markdown);
+        var autoHighlightCount = 0;
         var needsLineBreak = false;
 
         for (var i = 0; i < lines.Length; i++)
@@ -428,7 +447,9 @@ public partial class TranslationTooltipWindow : Window
                 display,
                 new MarkdownInlineStyle(null, weight, size, null),
                 colorRenderer,
-                options.EnableMathRendering);
+                options.EnableMathRendering,
+                autoHighlightPlainText,
+                ref autoHighlightCount);
             needsLineBreak = true;
         }
     }
@@ -470,12 +491,13 @@ public partial class TranslationTooltipWindow : Window
         formula = "";
         var trimmed = lines[index].Trim();
         var isDollarBlock = trimmed.StartsWith("$$", StringComparison.Ordinal);
-        var isBracketBlock = trimmed.StartsWith(@"\[", StringComparison.Ordinal);
+        var isBracketBlock = trimmed.StartsWith(@"\[", StringComparison.Ordinal)
+            || trimmed.StartsWith(@"\\[", StringComparison.Ordinal);
         if (!isDollarBlock && !isBracketBlock)
             return false;
 
-        var start = isDollarBlock ? "$$" : @"\[";
-        var end = isDollarBlock ? "$$" : @"\]";
+        var start = isDollarBlock ? "$$" : trimmed.StartsWith(@"\\[", StringComparison.Ordinal) ? @"\\[" : @"\[";
+        var end = isDollarBlock ? "$$" : start == @"\\[" ? @"\\]" : @"\]";
         var current = trimmed[start.Length..];
         var builder = current.EndsWith(end, StringComparison.Ordinal) && current.Length >= end.Length
             ? current[..^end.Length]
@@ -500,7 +522,9 @@ public partial class TranslationTooltipWindow : Window
         string text,
         MarkdownInlineStyle baseStyle,
         IMarkdownColorRenderer colorRenderer,
-        bool enableMathRendering)
+        bool enableMathRendering,
+        bool autoHighlightPlainText,
+        ref int autoHighlightCount)
     {
         var index = 0;
         while (index < text.Length)
@@ -508,31 +532,56 @@ public partial class TranslationTooltipWindow : Window
             var next = FindNextSpecial(text, index, enableMathRendering);
             if (next < 0)
             {
-                AddRun(target, text[index..], baseStyle);
+                AddPlainTextRuns(
+                    target,
+                    text[index..],
+                    baseStyle,
+                    colorRenderer,
+                    autoHighlightPlainText,
+                    ref autoHighlightCount);
                 return;
             }
 
             if (next > index)
             {
-                AddRun(target, text[index..next], baseStyle);
+                AddPlainTextRuns(
+                    target,
+                    text[index..next],
+                    baseStyle,
+                    colorRenderer,
+                    autoHighlightPlainText,
+                    ref autoHighlightCount);
                 index = next;
             }
 
             if (TryParseColorTag(text, index, colorRenderer, out var body, out var tagStyle, out var tagLength))
             {
-                AddInlineRuns(target, body, baseStyle.Merge(tagStyle), colorRenderer, enableMathRendering);
+                AddInlineRuns(
+                    target,
+                    body,
+                    baseStyle.Merge(tagStyle),
+                    colorRenderer,
+                    enableMathRendering,
+                    autoHighlightPlainText: false,
+                    ref autoHighlightCount);
                 index += tagLength;
                 continue;
             }
 
             if (TryParseBold(text, index, out body, out tagLength))
             {
+                var boldStyle = new MarkdownInlineStyle(null, FontWeight.Bold, null, null);
+                if (colorRenderer.TryGetStyle("emphasis", out var emphasisStyle))
+                    boldStyle = emphasisStyle.Merge(boldStyle);
+
                 AddInlineRuns(
                     target,
                     body,
-                    baseStyle.Merge(new MarkdownInlineStyle(null, FontWeight.Bold, null, null)),
+                    baseStyle.Merge(boldStyle),
                     colorRenderer,
-                    enableMathRendering);
+                    enableMathRendering,
+                    autoHighlightPlainText: false,
+                    ref autoHighlightCount);
                 index += tagLength;
                 continue;
             }
@@ -562,6 +611,9 @@ public partial class TranslationTooltipWindow : Window
         {
             next = Math.Min(next, IndexOfOrMax(text, "$", start));
             next = Math.Min(next, IndexOfOrMax(text, @"\(", start));
+            next = Math.Min(next, IndexOfOrMax(text, @"\\(", start));
+            next = Math.Min(next, IndexOfOrMax(text, @"\[", start));
+            next = Math.Min(next, IndexOfOrMax(text, @"\\[", start));
         }
 
         return next == int.MaxValue ? -1 : next;
@@ -596,7 +648,7 @@ public partial class TranslationTooltipWindow : Window
         if (text[index] == '$')
         {
             if (index + 1 < text.Length && text[index + 1] == '$')
-                return false;
+                return TryParseDelimitedMath(text, index, "$$", "$$", out formula, out length);
 
             var end = text.IndexOf('$', index + 1);
             if (end <= index + 1)
@@ -607,15 +659,38 @@ public partial class TranslationTooltipWindow : Window
             return true;
         }
 
-        if (!text.AsSpan(index).StartsWith(@"\(", StringComparison.Ordinal))
+        if (TryParseDelimitedMath(text, index, @"\\(", @"\\)", out formula, out length))
+            return true;
+        if (TryParseDelimitedMath(text, index, @"\(", @"\)", out formula, out length))
+            return true;
+        if (TryParseDelimitedMath(text, index, @"\\[", @"\\]", out formula, out length))
+            return true;
+        if (TryParseDelimitedMath(text, index, @"\[", @"\]", out formula, out length))
+            return true;
+
+        return false;
+    }
+
+    private static bool TryParseDelimitedMath(
+        string text,
+        int index,
+        string open,
+        string close,
+        out string formula,
+        out int length)
+    {
+        formula = "";
+        length = 0;
+        if (!text.AsSpan(index).StartsWith(open, StringComparison.Ordinal))
             return false;
 
-        var close = text.IndexOf(@"\)", index + 2, StringComparison.Ordinal);
-        if (close <= index + 2)
+        var bodyStart = index + open.Length;
+        var bodyEnd = text.IndexOf(close, bodyStart, StringComparison.Ordinal);
+        if (bodyEnd <= bodyStart)
             return false;
 
-        formula = text[(index + 2)..close];
-        length = close + 2 - index;
+        formula = text[bodyStart..bodyEnd];
+        length = bodyEnd + close.Length - index;
         return true;
     }
 
@@ -656,6 +731,80 @@ public partial class TranslationTooltipWindow : Window
         return true;
     }
 
+    private static bool ContainsColorTags(string markdown) =>
+        Regex.IsMatch(
+            markdown,
+            @"<(?:(?:key|term|accent|warn|warning|ok|success|note|info|emphasis)\b|(?:hl|mark)\s+type=)",
+            RegexOptions.IgnoreCase);
+
+    private static void AddPlainTextRuns(
+        TextBlock target,
+        string text,
+        MarkdownInlineStyle baseStyle,
+        IMarkdownColorRenderer colorRenderer,
+        bool autoHighlightPlainText,
+        ref int autoHighlightCount)
+    {
+        if (!autoHighlightPlainText
+            || baseStyle.Foreground != null
+            || autoHighlightCount >= MaxAutoHighlights)
+        {
+            AddRun(target, text, baseStyle);
+            return;
+        }
+
+        var index = 0;
+        while (index < text.Length)
+        {
+            if (!TryFindAutoHighlight(text, index, out var match)
+                || autoHighlightCount >= MaxAutoHighlights
+                || !colorRenderer.TryGetStyle(match.StyleType, out var highlightStyle))
+            {
+                AddRun(target, text[index..], baseStyle);
+                return;
+            }
+
+            if (match.Index > index)
+                AddRun(target, text[index..match.Index], baseStyle);
+
+            AddRun(target, text.Substring(match.Index, match.Length), baseStyle.Merge(highlightStyle));
+            autoHighlightCount++;
+            index = match.Index + match.Length;
+        }
+    }
+
+    private static bool TryFindAutoHighlight(string text, int start, out AutoHighlightMatch result)
+    {
+        var best = default(AutoHighlightMatch);
+        var found = false;
+
+        Consider(AutoWarnRegex, "warn");
+        Consider(AutoOkRegex, "ok");
+        Consider(AutoTechnicalTermRegex, "term");
+        Consider(AutoAcronymRegex, "term");
+        Consider(AutoNumberRegex, "key");
+
+        result = best;
+        return found;
+
+        void Consider(Regex regex, string styleType)
+        {
+            var match = regex.Match(text, start);
+            if (!match.Success)
+                return;
+
+            if (found
+                && (match.Index > best.Index
+                    || (match.Index == best.Index && match.Length <= best.Length)))
+            {
+                return;
+            }
+
+            best = new AutoHighlightMatch(match.Index, match.Length, styleType);
+            found = true;
+        }
+    }
+
     private static void AddRun(TextBlock target, string text, MarkdownInlineStyle style)
     {
         if (string.IsNullOrEmpty(text))
@@ -674,4 +823,6 @@ public partial class TranslationTooltipWindow : Window
 
         target.Inlines?.Add(run);
     }
+
+    private readonly record struct AutoHighlightMatch(int Index, int Length, string StyleType);
 }

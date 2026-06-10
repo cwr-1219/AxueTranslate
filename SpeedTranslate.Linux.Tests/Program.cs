@@ -5,6 +5,8 @@ using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using SpeedTranslate.Linux.Models;
 using SpeedTranslate.Linux.Rendering;
@@ -24,6 +26,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("TranslationTooltipWindow parses simple Markdown lines", TestMarkdownParsing),
     ("TranslationTooltipWindow controls have clipping-safe dimensions", TestTooltipControlDimensions),
     ("MarkdownMathRenderer converts common LaTeX syntax", TestMarkdownMathRendering),
+    ("TranslationTooltipWindow parses escaped inline math delimiters", TestEscapedInlineMathParsing),
+    ("TranslationTooltipWindow renders escaped math instead of raw LaTeX", TestTooltipRendersEscapedMath),
+    ("TranslationTooltipWindow applies semantic highlight fallback", TestTooltipSemanticHighlightFallback),
     ("Markdown color renderer factory respects enable flag", TestMarkdownColorRendererFactory),
     ("Markdown color tags are stripped for plain output", TestMarkdownOutputSanitizer),
     ("LLMService adds semantic color tag prompt only when enabled", TestMarkdownRenderingPrompt),
@@ -274,6 +279,71 @@ static Task TestMarkdownMathRendering()
     if (!display.Contains("α × xₙ"))
         throw new Exception($"Expected Greek letter and operator rendering, got: {display}");
 
+    var escapedDisplay = MarkdownMathRenderer.ToDisplayText(@"\\frac{a_1}{b^2} + \\alpha");
+    if (!escapedDisplay.Contains("a₁/b²") || !escapedDisplay.Contains("α"))
+        throw new Exception($"Expected doubled backslash LaTeX to render, got: {escapedDisplay}");
+
+    var delimitedDisplay = MarkdownMathRenderer.ToDisplayText(@"\\( S_n = \\{w_i\\}_{i=1}^n \\)");
+    if (delimitedDisplay.Contains(@"\(") || !delimitedDisplay.Contains("Sₙ"))
+        throw new Exception($"Expected escaped math delimiters to be stripped, got: {delimitedDisplay}");
+
+    return Task.CompletedTask;
+}
+
+static Task TestEscapedInlineMathParsing()
+{
+    var method = typeof(TranslationTooltipWindow).GetMethod(
+        "TryParseInlineMath",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    if (method == null)
+        throw new Exception("TryParseInlineMath was not found.");
+
+    object?[] args = { @"\\(a_1 + b^2\\)", 0, "", 0 };
+    var success = (bool)(method.Invoke(null, args) ?? false);
+    if (!success)
+        throw new Exception("Expected escaped inline math delimiters to parse.");
+
+    if ((string?)args[2] != "a_1 + b^2")
+        throw new Exception($"Unexpected parsed formula: {args[2]}");
+
+    if ((int)(args[3] ?? 0) != @"\\(a_1 + b^2\\)".Length)
+        throw new Exception($"Unexpected parsed length: {args[3]}");
+
+    return Task.CompletedTask;
+}
+
+static Task TestTooltipRendersEscapedMath()
+{
+    var textBlock = RenderTooltipMarkdown(
+        @"公式：\\(a_1 + b^2\\)",
+        new MarkdownRenderOptions(true, false, MarkdownColorRenderModes.SemanticTags));
+    var rendered = CollectRunText(textBlock);
+
+    if (rendered.Contains(@"\(") || rendered.Contains(@"\\("))
+        throw new Exception($"Expected escaped math delimiters to be hidden, got: {rendered}");
+
+    if (!rendered.Contains("a₁ + b²"))
+        throw new Exception($"Expected formula to be rendered with scripts, got: {rendered}");
+
+    return Task.CompletedTask;
+}
+
+static Task TestTooltipSemanticHighlightFallback()
+{
+    var textBlock = RenderTooltipMarkdown(
+        "循环神经网络（RNN）和卷积神经网络（CNN）是关键模型。",
+        new MarkdownRenderOptions(true, true, MarkdownColorRenderModes.SemanticTags));
+
+    var highlightedRuns = 0;
+    foreach (var inline in textBlock.Inlines!)
+    {
+        if (inline is Run { Foreground: not null })
+            highlightedRuns++;
+    }
+
+    if (highlightedRuns == 0)
+        throw new Exception("Expected at least one fallback semantic highlight run.");
+
     return Task.CompletedTask;
 }
 
@@ -321,6 +391,9 @@ static Task TestMarkdownRenderingPrompt()
     prompt = LLMService.BuildMarkdownRenderingPrompt(config);
     if (!prompt.Contains("<key>") || !prompt.Contains("<warn>"))
         throw new Exception("Markdown rendering prompt should request semantic tags when enabled.");
+
+    if (!prompt.Contains("MUST") || !prompt.Contains("at least 2"))
+        throw new Exception("Semantic color prompt should require a small number of tags.");
 
     return Task.CompletedTask;
 }
@@ -373,6 +446,34 @@ static Task TestTooltipLayoutExpandsForLongText()
         throw new Exception($"Expected long text height to grow, got {longLayout.ContentMaxHeight}.");
 
     return Task.CompletedTask;
+}
+
+static TextBlock RenderTooltipMarkdown(string markdown, MarkdownRenderOptions options)
+{
+    var method = typeof(TranslationTooltipWindow).GetMethod(
+        "RenderMarkdown",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    if (method == null)
+        throw new Exception("RenderMarkdown was not found.");
+
+    var textBlock = new TextBlock
+    {
+        FontSize = 14,
+    };
+    method.Invoke(null, new object[] { textBlock, markdown, options });
+    return textBlock;
+}
+
+static string CollectRunText(TextBlock textBlock)
+{
+    var text = "";
+    foreach (var inline in textBlock.Inlines!)
+    {
+        if (inline is Run run)
+            text += run.Text;
+    }
+
+    return text;
 }
 
 static string GetRepoPath(string relativePath)

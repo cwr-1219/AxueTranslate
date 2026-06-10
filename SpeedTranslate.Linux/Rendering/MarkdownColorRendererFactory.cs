@@ -76,14 +76,15 @@ internal sealed class SemanticTagMarkdownColorRenderer : IMarkdownColorRenderer
 
     public string PromptInstructions =>
         """
-        Optional semantic color tags:
-        - When it genuinely helps scanning, wrap only a few important words or short phrases with these tags:
+        Required semantic color tags:
+        - You MUST wrap important words or short phrases with these tags so the UI can color-highlight them:
           <key>core term/name/number</key>
           <term>technical term</term>
           <warn>risk, warning, error, or caveat</warn>
           <ok>positive result, conclusion, or safe action</ok>
           <note>useful note or context</note>
-        - Use at most 6 tagged phrases in one response. Do not wrap full sentences or paragraphs.
+        - For non-trivial responses, use at least 2 tagged phrases. For long responses, use 4 to 8 tagged phrases.
+        - Do not wrap full sentences or paragraphs.
         - Do not nest these tags. Do not invent other HTML/XML tags.
         - Keep Markdown and LaTeX math delimiters intact outside these tags.
         """;

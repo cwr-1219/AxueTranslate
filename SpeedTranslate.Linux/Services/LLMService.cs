@@ -53,7 +53,7 @@ Target Language settings:
 
 CRITICAL RULES:
 1. Output ONLY the translated text content. Do NOT wrap it in Markdown code blocks (do not use ```), and do NOT add any introductions, explanations, prefixes, or notes.
-2. Keep the exact same formatting, paragraphs, spaces, Markdown structure, and punctuation of the original text.
+2. Keep the exact same formatting, paragraphs, spaces, Markdown structure, and punctuation of the original text, except for semantic color tags explicitly required by Rendering settings.
 3. Keep mathematical formulas as LaTeX math using $...$, \(...\), $$...$$, or \[...\]. Translate surrounding prose, not formula symbols.
 4. If the input text is already in the target language (or the main language matching it), translate it back to the other major language (e.g. if target language is Chinese, and the input is Chinese, translate it to English; if target language is English, and input is English, translate it to Chinese).";
 
