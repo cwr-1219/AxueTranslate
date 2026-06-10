@@ -5,23 +5,98 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using SpeedTranslate.Linux.Models;
+using SpeedTranslate.Linux.Rendering;
 
 namespace SpeedTranslate.Linux.Services;
 
 public class LLMService
 {
-    private static readonly HttpClient HttpClient = new()
+    private static readonly HttpClient SharedHttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(15),
+        Timeout = Timeout.InfiniteTimeSpan,
     };
+    private readonly HttpClient _httpClient;
 
-    public async Task<string> TranslateAsync(string text, AppConfig config)
+    public LLMService()
+        : this(SharedHttpClient)
     {
+    }
+
+    public LLMService(HttpClient httpClient)
+    {
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    }
+
+    public async Task<string> TranslateAsync(
+        string text,
+        AppConfig config,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
+        var targetLangPrompt = GetTargetLanguagePrompt(config.TargetLanguage);
+        var stylePrompt = GetStylePrompt(config.TargetLanguage, config.TranslationStyle);
+        var renderingPrompt = BuildMarkdownRenderingPrompt(config);
+
+        var systemPrompt = $@"You are a professional and accurate translator. Translate the text provided by the user into the target language.
+
+Target Language settings:
+{targetLangPrompt}
+{(string.IsNullOrWhiteSpace(stylePrompt) ? "" : "\n" + stylePrompt)}
+{(string.IsNullOrWhiteSpace(renderingPrompt) ? "" : "\n\nRendering settings:\n" + renderingPrompt)}
+
+CRITICAL RULES:
+1. Output ONLY the translated text content. Do NOT wrap it in Markdown code blocks (do not use ```), and do NOT add any introductions, explanations, prefixes, or notes.
+2. Keep the exact same formatting, paragraphs, spaces, Markdown structure, and punctuation of the original text, except for semantic color tags explicitly required by Rendering settings.
+3. Keep mathematical formulas as LaTeX math using $...$, \(...\), $$...$$, or \[...\]. Translate surrounding prose, not formula symbols.
+4. If the input text is already in the target language (or the main language matching it), translate it back to the other major language (e.g. if target language is Chinese, and the input is Chinese, translate it to English; if target language is English, and input is English, translate it to Chinese).";
+
+        return await SendChatCompletionAsync(text, config, systemPrompt, 0.3f, cancellationToken);
+    }
+
+    public async Task<string> SummarizeAsync(
+        string text,
+        AppConfig config,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var targetLangPrompt = GetTargetLanguagePrompt(config.TargetLanguage);
+        var renderingPrompt = BuildMarkdownRenderingPrompt(config);
+        var systemPrompt = $@"You are a precise reading assistant. Summarize the user's text into the target language.
+
+Target Language settings:
+{targetLangPrompt}
+{(string.IsNullOrWhiteSpace(renderingPrompt) ? "" : "\n\nRendering settings:\n" + renderingPrompt)}
+
+CRITICAL RULES:
+1. Output concise Markdown only. Do NOT wrap the answer in code fences and do NOT add explanations outside the summary.
+2. Use short headings and bullet points in the target language.
+3. Preserve key names, numbers, terms, conclusions, warnings, and mathematical formulas. Do not invent facts.
+4. Prefer this structure when useful:
+   - A one-sentence overview.
+   - 3 to 6 key bullet points.
+   - A short conclusion or next action if the source clearly contains one.";
+
+        return await SendChatCompletionAsync(text, config, systemPrompt, 0.2f, cancellationToken);
+    }
+
+    private async Task<string> SendChatCompletionAsync(
+        string text,
+        AppConfig config,
+        string systemPrompt,
+        float temperature,
+        CancellationToken cancellationToken)
+    {
         var (apiUrl, apiKey, modelName) = ResolveModel(config);
 
         if (string.IsNullOrWhiteSpace(apiUrl) || string.IsNullOrWhiteSpace(apiKey))
@@ -31,20 +106,6 @@ public class LLMService
         if (!apiUrl.EndsWith("/chat/completions"))
             apiUrl = apiUrl.TrimEnd('/') + "/chat/completions";
 
-        var targetLangPrompt = GetTargetLanguagePrompt(config.TargetLanguage);
-        var stylePrompt = GetStylePrompt(config.TargetLanguage, config.TranslationStyle);
-
-        var systemPrompt = $@"You are a professional and accurate translator. Translate the text provided by the user into the target language.
-
-Target Language settings:
-{targetLangPrompt}
-{(string.IsNullOrWhiteSpace(stylePrompt) ? "" : "\n" + stylePrompt)}
-
-CRITICAL RULES:
-1. Output ONLY the raw translated text content. Do NOT wrap it in Markdown code blocks (do not use ```), and do NOT add any introductions, explanations, prefixes, or notes.
-2. Keep the exact same formatting, paragraphs, spaces, and punctuation of the original text.
-3. If the input text is already in the target language (or the main language matching it), translate it back to the other major language (e.g. if target language is Chinese, and the input is Chinese, translate it to English; if target language is English, and input is English, translate it to Chinese).";
-
         var requestBody = new ChatRequest
         {
             Model = modelName,
@@ -53,7 +114,7 @@ CRITICAL RULES:
                 new ChatMessage { Role = "system", Content = systemPrompt },
                 new ChatMessage { Role = "user", Content = text },
             },
-            Temperature = 0.3f,
+            Temperature = temperature,
         };
 
         var requestJson = JsonSerializer.Serialize(requestBody);
@@ -62,8 +123,22 @@ CRITICAL RULES:
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
         request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        var response = await HttpClient.SendAsync(request);
-        var responseContent = await response.Content.ReadAsStringAsync();
+        var timeout = GetRequestTimeout(text);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        HttpResponseMessage response;
+        string responseContent;
+        try
+        {
+            response = await _httpClient.SendAsync(request, timeoutCts.Token);
+            responseContent = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"API 请求超时（已等待 {timeout.TotalSeconds:0} 秒）。请稍后重试，或减少一次翻译的文本长度。");
+        }
 
         if (!response.IsSuccessStatusCode)
             throw new Exception($"API 请求失败 (HTTP {(int)response.StatusCode}): {responseContent}");
@@ -76,6 +151,38 @@ CRITICAL RULES:
             ?? throw new Exception("模型响应内容为空。");
 
         return CleanTranslatedText(translatedText);
+    }
+
+    public static TimeSpan GetRequestTimeout(string text)
+    {
+        var length = text?.Length ?? 0;
+        return length switch
+        {
+            <= 600 => TimeSpan.FromSeconds(15),
+            <= 2000 => TimeSpan.FromSeconds(45),
+            <= 5000 => TimeSpan.FromSeconds(90),
+            _ => TimeSpan.FromSeconds(120),
+        };
+    }
+
+    public static string BuildMarkdownRenderingPrompt(AppConfig config)
+    {
+        var parts = new List<string>();
+        if (config.EnableMarkdownMathRendering)
+        {
+            parts.Add("""
+                Math rendering:
+                - Preserve existing mathematical formulas in LaTeX delimiters such as $...$, \(...\), $$...$$, or \[...\].
+                - When a summary needs a formula, write it in compact LaTeX math delimiters.
+                - Do not translate variable names or formula operators.
+                """);
+        }
+
+        var colorRenderer = MarkdownColorRendererFactory.Create(config);
+        if (!string.IsNullOrWhiteSpace(colorRenderer.PromptInstructions))
+            parts.Add(colorRenderer.PromptInstructions);
+
+        return string.Join("\n\n", parts);
     }
 
     public async Task<List<string>> GetAvailableModelsAsync(string apiUrl, string apiKey)
@@ -92,7 +199,7 @@ CRITICAL RULES:
         using var request = new HttpRequestMessage(HttpMethod.Get, modelsUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
 
-        var response = await HttpClient.SendAsync(request);
+        var response = await _httpClient.SendAsync(request);
         var responseContent = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)

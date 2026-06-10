@@ -23,6 +23,13 @@ public class AppConfig
     public bool EnableSelectionMode { get; set; } = true;
     public bool EnableAllTextMode { get; set; } = true;
 
+    public bool EnableAutoSummary { get; set; } = false;
+    public int AutoSummaryMinLength { get; set; } = 1800;
+
+    public bool EnableMarkdownMathRendering { get; set; } = true;
+    public bool EnableMarkdownColorRendering { get; set; } = false;
+    public string MarkdownColorRenderMode { get; set; } = "SemanticTags";
+
     public HotkeyDescriptor Hotkey { get; set; } = new();
     public HotkeyDescriptor TooltipHotkey { get; set; } = new()
     {

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SpeedTranslate.Linux.Models;
+using SpeedTranslate.Linux.Rendering;
 using SpeedTranslate.Linux.Services;
 
 namespace SpeedTranslate.Linux.ViewModels;
@@ -31,6 +32,21 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty] private bool _enableSelectionMode;
     [ObservableProperty] private bool _enableAllTextMode;
+    [ObservableProperty] private bool _enableAutoSummary;
+    [ObservableProperty] private int _autoSummaryMinLength = 1800;
+    [ObservableProperty] private bool _enableMarkdownMathRendering = true;
+    [ObservableProperty] private bool _enableMarkdownColorRendering;
+    [ObservableProperty] private int _markdownColorModeIndex;
+
+    public ObservableCollection<string> MarkdownColorModeOptions { get; } = new()
+    {
+        "语义标签高亮",
+    };
+
+    private static readonly string[] MarkdownColorModeTags =
+    {
+        MarkdownColorRenderModes.SemanticTags,
+    };
 
     [ObservableProperty] private HotkeyDescriptor _hotkey = new();
     public string HotkeyDisplay => Hotkey.DisplayText;
@@ -79,7 +95,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ApplyConfigToUI(_config);
     }
 
-    public AppConfig CurrentConfig => _config;
+    public AppConfig CurrentConfig => BuildConfigFromUI();
 
     private void ApplyConfigToUI(AppConfig config)
     {
@@ -103,6 +119,12 @@ public partial class MainWindowViewModel : ViewModelBase
 
         EnableSelectionMode = config.EnableSelectionMode;
         EnableAllTextMode = config.EnableAllTextMode;
+        EnableAutoSummary = config.EnableAutoSummary;
+        AutoSummaryMinLength = Math.Clamp(config.AutoSummaryMinLength, 300, 20000);
+        EnableMarkdownMathRendering = config.EnableMarkdownMathRendering;
+        EnableMarkdownColorRendering = config.EnableMarkdownColorRendering;
+        var colorModeIdx = Array.IndexOf(MarkdownColorModeTags, config.MarkdownColorRenderMode);
+        MarkdownColorModeIndex = colorModeIdx < 0 ? 0 : colorModeIdx;
 
         Hotkey = config.Hotkey;
         OnPropertyChanged(nameof(HotkeyDisplay));
@@ -230,6 +252,12 @@ public partial class MainWindowViewModel : ViewModelBase
             : "Standard";
         _config.EnableSelectionMode = EnableSelectionMode;
         _config.EnableAllTextMode = EnableAllTextMode;
+        _config.EnableAutoSummary = EnableAutoSummary;
+        _config.AutoSummaryMinLength = Math.Clamp(AutoSummaryMinLength, 300, 20000);
+        _config.EnableMarkdownMathRendering = EnableMarkdownMathRendering;
+        _config.EnableMarkdownColorRendering = EnableMarkdownColorRendering;
+        _config.MarkdownColorRenderMode =
+            MarkdownColorModeTags[Math.Clamp(MarkdownColorModeIndex, 0, MarkdownColorModeTags.Length - 1)];
         _config.Hotkey = Hotkey;
         _config.TooltipHotkey = TooltipHotkey;
         return _config;
