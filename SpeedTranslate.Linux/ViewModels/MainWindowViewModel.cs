@@ -95,7 +95,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ApplyConfigToUI(_config);
     }
 
-    public AppConfig CurrentConfig => _config;
+    public AppConfig CurrentConfig => BuildConfigFromUI();
 
     private void ApplyConfigToUI(AppConfig config)
     {

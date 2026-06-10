@@ -137,6 +137,8 @@ public sealed class TranslationCoordinator
 
             var useSummary = ShouldAutoSummarize(sourceText, config);
             DebugLog.Write(
+                $"[Coord] tooltip: autoSummary={config.EnableAutoSummary}, threshold={Math.Clamp(config.AutoSummaryMinLength, 300, 20000)}, sourceLen={sourceText.Length}");
+            DebugLog.Write(
                 $"[Coord] tooltip: calling LLM ({(useSummary ? "summary" : "translation")}, lang={config.TargetLanguage})");
             var translated = useSummary
                 ? await _llm.SummarizeAsync(sourceText, config, cancellationToken)

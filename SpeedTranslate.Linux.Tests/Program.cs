@@ -18,6 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("TranslationCoordinator exposes a shutdown cancellation hook", TestCoordinatorExposesCancelPendingWork),
     ("TranslationCoordinator.CancelPendingWork returns promptly", TestCancelPendingWorkReturnsPromptly),
     ("AppConfig keeps automatic summary opt-in", TestSummaryConfigDefaults),
+    ("MainWindowViewModel runtime config reflects unsaved auto-summary toggle", TestRuntimeConfigReflectsAutoSummaryToggle),
     ("AppConfig keeps markdown rendering defaults", TestMarkdownRenderingConfigDefaults),
     ("TranslationCoordinator auto summary policy uses the configured threshold", TestAutoSummaryPolicy),
     ("TranslationTooltipWindow parses simple Markdown lines", TestMarkdownParsing),
@@ -164,6 +165,33 @@ static Task TestSummaryConfigDefaults()
 
     if (config.AutoSummaryMinLength != 1800)
         throw new Exception($"Expected default summary threshold 1800, got {config.AutoSummaryMinLength}.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestRuntimeConfigReflectsAutoSummaryToggle()
+{
+    var previousConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+    var tempConfigHome = Path.Combine(Path.GetTempPath(), "axue-config-test-" + Guid.NewGuid());
+    Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tempConfigHome);
+
+    try
+    {
+        var vm = new SpeedTranslate.Linux.ViewModels.MainWindowViewModel();
+        vm.EnableAutoSummary = true;
+        if (!vm.CurrentConfig.EnableAutoSummary)
+            throw new Exception("Expected runtime config to reflect enabled auto summary.");
+
+        vm.EnableAutoSummary = false;
+        if (vm.CurrentConfig.EnableAutoSummary)
+            throw new Exception("Expected runtime config to reflect disabled auto summary before saving.");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+        if (Directory.Exists(tempConfigHome))
+            Directory.Delete(tempConfigHome, recursive: true);
+    }
 
     return Task.CompletedTask;
 }
