@@ -15,6 +15,8 @@ public sealed class GlobalHotkeyService : IDisposable
     private Action? _callback;
     private HotkeyDescriptor? _registered2;
     private Action? _callback2;
+    private HotkeyDescriptor? _registered3;
+    private Action? _callback3;
 
     private bool _ctrl, _alt, _shift, _meta;
     private bool _suppressed;
@@ -32,6 +34,12 @@ public sealed class GlobalHotkeyService : IDisposable
     {
         _registered2 = hotkey;
         _callback2 = callback;
+    }
+
+    public void Register3(HotkeyDescriptor hotkey, Action callback)
+    {
+        _registered3 = hotkey;
+        _callback3 = callback;
     }
 
     public void Start()
@@ -152,6 +160,24 @@ public sealed class GlobalHotkeyService : IDisposable
             catch (Exception ex)
             {
                 DebugLog.Write($"[Hook] tooltip callback exception: {ex.Message}");
+            }
+            return;
+        }
+
+        // 历史窗口热键
+        if (_registered3 != null && _callback3 != null &&
+            pressedMods == _registered3.Modifiers &&
+            string.Equals(avKey, _registered3.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            _suppressed = true;
+            try
+            {
+                DebugLog.Write($"[Hook] history hotkey matched: {_registered3.DisplayText}");
+                _callback3.Invoke();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"[Hook] history callback exception: {ex.Message}");
             }
         }
     }

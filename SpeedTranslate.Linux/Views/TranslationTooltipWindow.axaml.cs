@@ -285,6 +285,7 @@ public partial class TranslationTooltipWindow : Window
                 : await _llmService.TranslateAsync(_originalText, _config, _shutdownToken);
             _shutdownToken.ThrowIfCancellationRequested();
             UpdateTranslatedText(result);
+            SaveHistory(result, _isSummaryMode ? "TooltipSummary" : "TooltipTranslation");
             UpdateModeTag();
         }
         catch (OperationCanceledException) when (_shutdownToken.IsCancellationRequested)
@@ -321,6 +322,7 @@ public partial class TranslationTooltipWindow : Window
             var result = await _llmService.SummarizeAsync(_originalText, _config, _shutdownToken);
             _shutdownToken.ThrowIfCancellationRequested();
             UpdateTranslatedText(result);
+            SaveHistory(result, "TooltipSummary");
         }
         catch (OperationCanceledException) when (_shutdownToken.IsCancellationRequested)
         {
@@ -360,6 +362,16 @@ public partial class TranslationTooltipWindow : Window
         {
             System.Diagnostics.Debug.WriteLine($"复制失败: {ex.Message}");
         }
+    }
+
+    private void SaveHistory(string result, string mode)
+    {
+        if (_config == null || string.IsNullOrWhiteSpace(_originalText) || string.IsNullOrWhiteSpace(result))
+            return;
+
+        TranslationHistoryService.AddEntry(
+            TranslationHistoryService.CreateEntry(_originalText, result, _config, mode),
+            _config);
     }
 
     private async void ReplaceButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

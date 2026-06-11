@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -22,6 +23,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("AppConfig keeps automatic summary opt-in", TestSummaryConfigDefaults),
     ("MainWindowViewModel runtime config reflects unsaved auto-summary toggle", TestRuntimeConfigReflectsAutoSummaryToggle),
     ("AppConfig keeps markdown rendering defaults", TestMarkdownRenderingConfigDefaults),
+    ("AppConfig keeps translation history defaults", TestTranslationHistoryConfigDefaults),
+    ("History hotkey is configurable and registered", TestHistoryHotkeyConfiguration),
+    ("TranslationHistoryWindow exposes yellow favorite star color", TestHistoryFavoriteStarColor),
+    ("TranslationHistoryService stores and searches local entries", TestTranslationHistoryServiceStoresAndSearches),
+    ("TranslationHistoryService prunes old ordinary history but keeps favorites first", TestTranslationHistoryPruning),
+    ("TranslationHistoryService tolerates corrupted history file", TestTranslationHistoryCorruptFile),
     ("TranslationCoordinator auto summary policy uses the configured threshold", TestAutoSummaryPolicy),
     ("TranslationTooltipWindow parses simple Markdown lines", TestMarkdownParsing),
     ("TranslationTooltipWindow controls have clipping-safe dimensions", TestTooltipControlDimensions),
@@ -215,6 +222,200 @@ static Task TestMarkdownRenderingConfigDefaults()
 
     return Task.CompletedTask;
 }
+
+static Task TestTranslationHistoryConfigDefaults()
+{
+    var config = new AppConfig();
+    if (!config.EnableTranslationHistory)
+        throw new Exception("Translation history should be enabled by default.");
+
+    if (config.HistoryRetentionDays != 30)
+        throw new Exception($"Expected history retention 30 days, got {config.HistoryRetentionDays}.");
+
+    if (config.MaxHistoryItems != 500)
+        throw new Exception($"Expected max history items 500, got {config.MaxHistoryItems}.");
+
+    if (config.HistoryHotkey.DisplayText != "Ctrl + Alt + H")
+        throw new Exception($"Expected default history hotkey Ctrl + Alt + H, got {config.HistoryHotkey.DisplayText}.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestHistoryHotkeyConfiguration()
+{
+    var method = typeof(GlobalHotkeyService).GetMethod("Register3");
+    if (method == null)
+        throw new Exception("Expected GlobalHotkeyService.Register3 for history hotkey.");
+
+    var previousConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+    var tempConfigHome = Path.Combine(Path.GetTempPath(), "axue-history-hotkey-test-" + Guid.NewGuid());
+    Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tempConfigHome);
+
+    try
+    {
+        var vm = new SpeedTranslate.Linux.ViewModels.MainWindowViewModel();
+        vm.ApplyHistoryHotkey(HotkeyModifiers.Control | HotkeyModifiers.Shift, "H");
+        if (vm.HistoryHotkeyDisplay != "Ctrl + Shift + H")
+            throw new Exception($"Expected history hotkey display to update, got {vm.HistoryHotkeyDisplay}.");
+
+        if (vm.CurrentConfig.HistoryHotkey.DisplayText != "Ctrl + Shift + H")
+            throw new Exception("Expected runtime config to reflect history hotkey.");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+        if (Directory.Exists(tempConfigHome))
+            Directory.Delete(tempConfigHome, recursive: true);
+    }
+
+    var xaml = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Views/MainWindow.axaml"));
+    if (!xaml.Contains("HistoryHotkeyTextBox") || !xaml.Contains("HistoryHotkeyDisplay"))
+        throw new Exception("Settings window should expose history hotkey input.");
+
+    var appCode = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/App.axaml.cs"));
+    if (!appCode.Contains("ReregisterHistoryHotkey") || !appCode.Contains("ShowHistoryWindow"))
+        throw new Exception("App should register a global history hotkey that opens history.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestHistoryFavoriteStarColor()
+{
+    if (TranslationHistoryWindow.FavoriteStarColor != "#FBBF24")
+        throw new Exception($"Expected yellow favorite star color, got {TranslationHistoryWindow.FavoriteStarColor}.");
+
+    var source = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Views/TranslationHistoryWindow.cs"));
+    if (!source.Contains("new Run(\"★ \")") || !source.Contains("FavoriteStarColor"))
+        throw new Exception("History window should render the favorite star as a separate colored run.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestTranslationHistoryServiceStoresAndSearches() =>
+    WithTempConfigHome(() =>
+    {
+        var config = new AppConfig
+        {
+            SelectedModel = "Custom",
+            CustomModel = "test-model",
+            TargetLanguage = "Chinese",
+            TranslationStyle = "Business",
+            EnableTranslationHistory = true,
+        };
+
+        var entry = TranslationHistoryService.CreateEntry(
+            "hello world",
+            "你好 <key>世界</key>",
+            config,
+            "TooltipTranslation");
+        TranslationHistoryService.AddEntry(entry, config);
+
+        var entries = TranslationHistoryService.LoadEntries();
+        if (entries.Count != 1)
+            throw new Exception($"Expected one history entry, got {entries.Count}.");
+
+        if (entries[0].ModelName != "test-model" || entries[0].Mode != "TooltipTranslation")
+            throw new Exception("History entry did not keep model metadata.");
+
+        var matches = TranslationHistoryService.Search("hello", favoritesOnly: false);
+        if (matches.Count != 1)
+            throw new Exception("Expected source text search to find the entry.");
+
+        if (!TranslationHistoryService.ToggleFavorite(entries[0].Id))
+            throw new Exception("Expected favorite toggle to succeed.");
+
+        var favorites = TranslationHistoryService.Search("", favoritesOnly: true);
+        if (favorites.Count != 1 || !favorites[0].IsFavorite)
+            throw new Exception("Expected favorite filter to return the toggled entry.");
+
+        if (!TranslationHistoryService.Delete(entries[0].Id))
+            throw new Exception("Expected delete to succeed.");
+
+        if (TranslationHistoryService.LoadEntries().Count != 0)
+            throw new Exception("Expected history to be empty after delete.");
+
+        config.EnableTranslationHistory = false;
+        TranslationHistoryService.AddEntry(
+            TranslationHistoryService.CreateEntry("disabled", "disabled", config, "ReplaceTranslation"),
+            config);
+        if (TranslationHistoryService.LoadEntries().Count != 0)
+            throw new Exception("Disabled history should not write entries.");
+
+        return Task.CompletedTask;
+    });
+
+static Task TestTranslationHistoryPruning()
+{
+    var config = new AppConfig
+    {
+        HistoryRetentionDays = 30,
+        MaxHistoryItems = 2,
+    };
+    var now = DateTimeOffset.Now;
+    var oldOrdinary = new TranslationHistoryEntry
+    {
+        Id = "old",
+        CreatedAt = now.AddDays(-60),
+        SourceText = "old ordinary",
+        ResultText = "old ordinary",
+    };
+    var oldFavorite = new TranslationHistoryEntry
+    {
+        Id = "favorite",
+        CreatedAt = now.AddDays(-90),
+        SourceText = "old favorite",
+        ResultText = "old favorite",
+        IsFavorite = true,
+    };
+    var recentOne = new TranslationHistoryEntry
+    {
+        Id = "recent-one",
+        CreatedAt = now.AddDays(-1),
+        SourceText = "recent one",
+        ResultText = "recent one",
+    };
+    var recentTwo = new TranslationHistoryEntry
+    {
+        Id = "recent-two",
+        CreatedAt = now,
+        SourceText = "recent two",
+        ResultText = "recent two",
+    };
+
+    var pruned = TranslationHistoryService.Prune(
+        new[] { oldOrdinary, oldFavorite, recentOne, recentTwo },
+        config);
+
+    if (pruned.Count != 2)
+        throw new Exception($"Expected two pruned entries, got {pruned.Count}.");
+
+    if (!ContainsHistoryId(pruned, "favorite"))
+        throw new Exception("Expected old favorite to survive retention pruning.");
+
+    if (ContainsHistoryId(pruned, "old"))
+        throw new Exception("Expected old ordinary entry to be removed.");
+
+    if (!ContainsHistoryId(pruned, "recent-two"))
+        throw new Exception("Expected newest ordinary entry to survive max-item pruning.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestTranslationHistoryCorruptFile() =>
+    WithTempConfigHome(() =>
+    {
+        Directory.CreateDirectory(ConfigManager.ConfigDir);
+        File.WriteAllText(TranslationHistoryService.HistoryPath, "{ broken json");
+
+        var entries = TranslationHistoryService.LoadEntries();
+        if (entries.Count != 0)
+            throw new Exception("Corrupted history should load as empty.");
+
+        if (!File.Exists(ConfigManager.ErrorLogPath))
+            throw new Exception("Corrupted history should write an error log.");
+
+        return Task.CompletedTask;
+    });
 
 static Task TestAutoSummaryPolicy()
 {
@@ -474,6 +675,35 @@ static string CollectRunText(TextBlock textBlock)
     }
 
     return text;
+}
+
+static bool ContainsHistoryId(IReadOnlyList<TranslationHistoryEntry> entries, string id)
+{
+    foreach (var entry in entries)
+    {
+        if (entry.Id == id)
+            return true;
+    }
+
+    return false;
+}
+
+static async Task WithTempConfigHome(Func<Task> body)
+{
+    var previousConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+    var tempConfigHome = Path.Combine(Path.GetTempPath(), "axue-history-test-" + Guid.NewGuid());
+    Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tempConfigHome);
+
+    try
+    {
+        await body();
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+        if (Directory.Exists(tempConfigHome))
+            Directory.Delete(tempConfigHome, recursive: true);
+    }
 }
 
 static string GetRepoPath(string relativePath)

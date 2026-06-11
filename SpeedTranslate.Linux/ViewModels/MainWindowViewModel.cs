@@ -37,6 +37,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool _enableMarkdownMathRendering = true;
     [ObservableProperty] private bool _enableMarkdownColorRendering;
     [ObservableProperty] private int _markdownColorModeIndex;
+    [ObservableProperty] private bool _enableTranslationHistory = true;
+    [ObservableProperty] private int _historyRetentionDays = 30;
+    [ObservableProperty] private int _maxHistoryItems = 500;
 
     public ObservableCollection<string> MarkdownColorModeOptions { get; } = new()
     {
@@ -58,14 +61,24 @@ public partial class MainWindowViewModel : ViewModelBase
     };
     public string TooltipHotkeyDisplay => TooltipHotkey.DisplayText;
 
+    [ObservableProperty] private HotkeyDescriptor _historyHotkey = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "H",
+    };
+    public string HistoryHotkeyDisplay => HistoryHotkey.DisplayText;
+
     [ObservableProperty] private bool _isFetchingModels;
     [ObservableProperty] private string _fetchModelsButtonText = "切换模型";
 
     public event EventHandler? RequestSaveAndHide;
     public event EventHandler<string>? RequestShowError;
     public event EventHandler<List<string>>? RequestShowModelPicker;
+    public event EventHandler? RequestShowHistory;
+    public event EventHandler? RequestClearHistory;
     public event EventHandler<HotkeyDescriptor>? HotkeyChanged;
     public event EventHandler<HotkeyDescriptor>? TooltipHotkeyChanged;
+    public event EventHandler<HotkeyDescriptor>? HistoryHotkeyChanged;
 
     private static readonly string[] LanguageTags =
         { "Auto", "English", "Chinese", "Japanese", "Korean", "French", "German", "Spanish" };
@@ -125,12 +138,18 @@ public partial class MainWindowViewModel : ViewModelBase
         EnableMarkdownColorRendering = config.EnableMarkdownColorRendering;
         var colorModeIdx = Array.IndexOf(MarkdownColorModeTags, config.MarkdownColorRenderMode);
         MarkdownColorModeIndex = colorModeIdx < 0 ? 0 : colorModeIdx;
+        EnableTranslationHistory = config.EnableTranslationHistory;
+        HistoryRetentionDays = Math.Clamp(config.HistoryRetentionDays, 1, 3650);
+        MaxHistoryItems = Math.Clamp(config.MaxHistoryItems, 1, 10000);
 
         Hotkey = config.Hotkey;
         OnPropertyChanged(nameof(HotkeyDisplay));
 
         TooltipHotkey = config.TooltipHotkey;
         OnPropertyChanged(nameof(TooltipHotkeyDisplay));
+
+        HistoryHotkey = config.HistoryHotkey;
+        OnPropertyChanged(nameof(HistoryHotkeyDisplay));
     }
 
     partial void OnSelectedModelIndexChanged(int oldValue, int newValue)
@@ -198,6 +217,12 @@ public partial class MainWindowViewModel : ViewModelBase
         TooltipHotkeyChanged?.Invoke(this, value);
     }
 
+    partial void OnHistoryHotkeyChanged(HotkeyDescriptor value)
+    {
+        OnPropertyChanged(nameof(HistoryHotkeyDisplay));
+        HistoryHotkeyChanged?.Invoke(this, value);
+    }
+
     private void LoadModelInputsFromConfig(string modelKey)
     {
         switch (modelKey)
@@ -258,8 +283,12 @@ public partial class MainWindowViewModel : ViewModelBase
         _config.EnableMarkdownColorRendering = EnableMarkdownColorRendering;
         _config.MarkdownColorRenderMode =
             MarkdownColorModeTags[Math.Clamp(MarkdownColorModeIndex, 0, MarkdownColorModeTags.Length - 1)];
+        _config.EnableTranslationHistory = EnableTranslationHistory;
+        _config.HistoryRetentionDays = Math.Clamp(HistoryRetentionDays, 1, 3650);
+        _config.MaxHistoryItems = Math.Clamp(MaxHistoryItems, 1, 10000);
         _config.Hotkey = Hotkey;
         _config.TooltipHotkey = TooltipHotkey;
+        _config.HistoryHotkey = HistoryHotkey;
         return _config;
     }
 
@@ -273,6 +302,11 @@ public partial class MainWindowViewModel : ViewModelBase
         TooltipHotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
     }
 
+    public void ApplyHistoryHotkey(HotkeyModifiers modifiers, string keyName)
+    {
+        HistoryHotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
+    }
+
     public void ApplyChosenModelName(string modelId)
     {
         ModelName = modelId;
@@ -284,6 +318,18 @@ public partial class MainWindowViewModel : ViewModelBase
         var config = BuildConfigFromUI();
         ConfigManager.SaveConfig(config);
         RequestSaveAndHide?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void ShowHistory()
+    {
+        RequestShowHistory?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void ClearHistory()
+    {
+        RequestClearHistory?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]

@@ -52,8 +52,10 @@ public partial class App : Application
             _hotkey = new GlobalHotkeyService();
             ReregisterHotkey();
             ReregisterTooltipHotkey();
+            ReregisterHistoryHotkey();
             _vm.HotkeyChanged += (_, _) => ReregisterHotkey();
             _vm.TooltipHotkeyChanged += (_, _) => ReregisterTooltipHotkey();
+            _vm.HistoryHotkeyChanged += (_, _) => ReregisterHistoryHotkey();
             _hotkey.Start();
 
             // 托盘
@@ -141,6 +143,15 @@ public partial class App : Application
         if (_hotkey == null || _vm == null || _coordinator == null) return;
         DebugLog.Write($"[App] Register tooltip hotkey: {_vm.TooltipHotkey.DisplayText}");
         _hotkey.Register2(_vm.TooltipHotkey, () => _coordinator.TriggerTooltip());
+    }
+
+    private void ReregisterHistoryHotkey()
+    {
+        if (_hotkey == null || _vm == null || _mainWindow == null) return;
+        DebugLog.Write($"[App] Register history hotkey: {_vm.HistoryHotkey.DisplayText}");
+        _hotkey.Register3(
+            _vm.HistoryHotkey,
+            () => Dispatcher.UIThread.Post(() => _mainWindow.ShowHistoryWindow()));
     }
 
     private void CheckSessionType()

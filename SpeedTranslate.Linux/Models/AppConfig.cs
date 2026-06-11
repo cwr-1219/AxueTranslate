@@ -30,10 +30,19 @@ public class AppConfig
     public bool EnableMarkdownColorRendering { get; set; } = false;
     public string MarkdownColorRenderMode { get; set; } = "SemanticTags";
 
+    public bool EnableTranslationHistory { get; set; } = true;
+    public int HistoryRetentionDays { get; set; } = 30;
+    public int MaxHistoryItems { get; set; } = 500;
+
     public HotkeyDescriptor Hotkey { get; set; } = new();
     public HotkeyDescriptor TooltipHotkey { get; set; } = new()
     {
         Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
         Key = "F",
+    };
+    public HotkeyDescriptor HistoryHotkey { get; set; } = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "H",
     };
 }

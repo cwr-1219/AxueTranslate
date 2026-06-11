@@ -202,6 +202,65 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 卡片四：历史与收藏 -->
+                    <Border Classes="Card">
+                        <StackPanel>
+                            <TextBlock Text="历史与收藏" Classes="CardTitle" />
+                            <CheckBox Classes="Dark"
+                                      Content="保存翻译历史到本地"
+                                      Margin="0,2,0,10"
+                                      IsChecked="{Binding EnableTranslationHistory, Mode=TwoWay}" />
+
+                            <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,12,Auto">
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock Text="历史保留天数" Classes="Label" />
+                                    <TextBox Classes="Input"
+                                             TextAlignment="Center"
+                                             Text="{Binding HistoryRetentionDays, Mode=TwoWay}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="2">
+                                    <TextBlock Text="最多保存条数" Classes="Label" />
+                                    <TextBox Classes="Input"
+                                             TextAlignment="Center"
+                                             Text="{Binding MaxHistoryItems, Mode=TwoWay}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
+                                    <TextBlock Text="历史快捷键 (点击录入)" Classes="Label" />
+                                    <TextBox Name="HistoryHotkeyTextBox"
+                                             Classes="Input"
+                                             IsReadOnly="True"
+                                             Cursor="Hand"
+                                             TextAlignment="Center"
+                                             Text="{Binding HistoryHotkeyDisplay, Mode=OneWay}"
+                                             KeyDown="HistoryHotkeyTextBox_KeyDown"
+                                             Margin="0,0,0,10" />
+                                    <TextBlock Text="历史只保存在本机配置目录；收藏条目会优先保留"
+                                               Foreground="#64748B"
+                                               FontSize="12"
+                                               LineHeight="18"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,10" />
+                                    <Grid ColumnDefinitions="*,10,*">
+                                        <Button Grid.Column="0"
+                                                Classes="Secondary"
+                                                Content="打开历史"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                Command="{Binding ShowHistoryCommand}" />
+                                        <Button Grid.Column="2"
+                                                Classes="Secondary"
+                                                Content="清空历史"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                Command="{Binding ClearHistoryCommand}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
 
