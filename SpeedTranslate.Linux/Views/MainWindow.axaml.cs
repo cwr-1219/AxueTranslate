@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using SpeedTranslate.Linux.Models;
+using SpeedTranslate.Linux.Services;
 using SpeedTranslate.Linux.ViewModels;
 
 namespace SpeedTranslate.Linux.Views;
@@ -15,6 +16,7 @@ namespace SpeedTranslate.Linux.Views;
 public partial class MainWindow : Window
 {
     private MainWindowViewModel? _vm;
+    private TranslationHistoryWindow? _historyWindow;
 
     public MainWindow()
     {
@@ -30,6 +32,8 @@ public partial class MainWindow : Window
             _vm.RequestSaveAndHide -= OnRequestSaveAndHide;
             _vm.RequestShowError -= OnRequestShowError;
             _vm.RequestShowModelPicker -= OnRequestShowModelPicker;
+            _vm.RequestShowHistory -= OnRequestShowHistory;
+            _vm.RequestClearHistory -= OnRequestClearHistory;
         }
         _vm = DataContext as MainWindowViewModel;
         if (_vm != null)
@@ -37,6 +41,8 @@ public partial class MainWindow : Window
             _vm.RequestSaveAndHide += OnRequestSaveAndHide;
             _vm.RequestShowError += OnRequestShowError;
             _vm.RequestShowModelPicker += OnRequestShowModelPicker;
+            _vm.RequestShowHistory += OnRequestShowHistory;
+            _vm.RequestClearHistory += OnRequestClearHistory;
         }
     }
 
@@ -87,6 +93,21 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    public void ShowHistoryWindow()
+    {
+        if (_historyWindow != null)
+        {
+            _historyWindow.Show();
+            _historyWindow.Activate();
+            return;
+        }
+
+        _historyWindow = new TranslationHistoryWindow();
+        _historyWindow.Closed += (_, _) => _historyWindow = null;
+        _historyWindow.Show();
+        _historyWindow.Activate();
+    }
+
     private async void OnRequestSaveAndHide(object? sender, EventArgs e)
     {
         await Task.Yield();
@@ -105,6 +126,22 @@ public partial class MainWindow : Window
         {
             _vm.ApplyChosenModelName(picked);
         }
+    }
+
+    private async void OnRequestShowHistory(object? sender, EventArgs e)
+    {
+        await Task.Yield();
+        ShowHistoryWindow();
+    }
+
+    private async void OnRequestClearHistory(object? sender, EventArgs e)
+    {
+        var confirmed = await ShowConfirmDialogAsync("确定要清空所有翻译历史和收藏吗？");
+        if (!confirmed)
+            return;
+
+        TranslationHistoryService.ClearAll();
+        await ShowErrorDialogAsync("翻译历史已清空。");
     }
 
     private async Task ShowErrorDialogAsync(string message)
@@ -150,6 +187,61 @@ public partial class MainWindow : Window
         dlg.Content = border;
 
         await dlg.ShowDialog(this);
+    }
+
+    private async Task<bool> ShowConfirmDialogAsync(string message)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        var dlg = new Window
+        {
+            Title = "确认",
+            Width = 380,
+            Height = 170,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SystemDecorations = SystemDecorations.BorderOnly,
+            Background = Avalonia.Media.Brushes.Transparent,
+            TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent },
+        };
+
+        var border = new Border
+        {
+            Background = Avalonia.Media.Brush.Parse("#161224"),
+            BorderBrush = Avalonia.Media.Brush.Parse("#2D2547"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(16),
+        };
+        var stack = new StackPanel { Spacing = 14 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = message,
+            Foreground = Avalonia.Media.Brush.Parse("#E2E8F0"),
+            FontSize = 13,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        });
+
+        var row = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        var cancel = new Button { Content = "取消", Padding = new Thickness(20, 6) };
+        var ok = new Button { Content = "清空", Padding = new Thickness(20, 6) };
+        ok.Classes.Add("Primary");
+        cancel.Click += (_, _) => { tcs.TrySetResult(false); dlg.Close(); };
+        ok.Click += (_, _) => { tcs.TrySetResult(true); dlg.Close(); };
+        row.Children.Add(cancel);
+        row.Children.Add(ok);
+        stack.Children.Add(row);
+
+        border.Child = stack;
+        dlg.Content = border;
+        dlg.Closed += (_, _) => tcs.TrySetResult(false);
+
+        await dlg.ShowDialog(this);
+        return await tcs.Task;
     }
 
     private Task<string?> ShowModelPickerAsync(List<string> models)
@@ -239,30 +331,20 @@ public partial class MainWindow : Window
 
     private void HotkeyTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        e.Handled = true;
-        if (_vm == null) return;
-
-        var key = e.Key;
-        if (key is Key.LeftCtrl or Key.RightCtrl or
-                   Key.LeftAlt or Key.RightAlt or
-                   Key.LeftShift or Key.RightShift or
-                   Key.LWin or Key.RWin)
-            return;
-
-        var modifiers = HotkeyModifiers.None;
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Control)) modifiers |= HotkeyModifiers.Control;
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Alt)) modifiers |= HotkeyModifiers.Alt;
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift)) modifiers |= HotkeyModifiers.Shift;
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Meta)) modifiers |= HotkeyModifiers.Meta;
-
-        var isFunction = key >= Key.F1 && key <= Key.F24;
-        if (modifiers == HotkeyModifiers.None && !isFunction)
-            return;
-
-        _vm.ApplyHotkey(modifiers, key.ToString());
+        CaptureHotkey(e, (modifiers, keyName) => _vm?.ApplyHotkey(modifiers, keyName));
     }
 
     private void TooltipHotkeyTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        CaptureHotkey(e, (modifiers, keyName) => _vm?.ApplyTooltipHotkey(modifiers, keyName));
+    }
+
+    private void HistoryHotkeyTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        CaptureHotkey(e, (modifiers, keyName) => _vm?.ApplyHistoryHotkey(modifiers, keyName));
+    }
+
+    private void CaptureHotkey(KeyEventArgs e, Action<HotkeyModifiers, string> apply)
     {
         e.Handled = true;
         if (_vm == null) return;
@@ -284,6 +366,6 @@ public partial class MainWindow : Window
         if (modifiers == HotkeyModifiers.None && !isFunction)
             return;
 
-        _vm.ApplyTooltipHotkey(modifiers, key.ToString());
+        apply(modifiers, key.ToString());
     }
 }

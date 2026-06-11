@@ -144,6 +144,13 @@ public sealed class TranslationCoordinator
                 ? await _llm.SummarizeAsync(sourceText, config, cancellationToken)
                 : await _llm.TranslateAsync(sourceText, config, cancellationToken);
             DebugLog.Write($"[Coord] tooltip: LLM returned (len={translated.Length}): {Trunc(translated)}");
+            TranslationHistoryService.AddEntry(
+                TranslationHistoryService.CreateEntry(
+                    sourceText,
+                    translated,
+                    config,
+                    useSummary ? "TooltipSummary" : "TooltipTranslation"),
+                config);
 
             // 隐藏 loading 窗，弹出浮窗
             await InvokeOnUiThreadAsync(() =>
@@ -274,6 +281,13 @@ public sealed class TranslationCoordinator
                 cancellationToken.ThrowIfCancellationRequested();
                 await _input.SendPasteAsync(targetWindow);
                 DebugLog.Write("[Coord] sent Ctrl+V");
+                TranslationHistoryService.AddEntry(
+                    TranslationHistoryService.CreateEntry(
+                        sourceText,
+                        translated,
+                        config,
+                        "ReplaceTranslation"),
+                    config);
                 DebugLog.Write("[Coord] flow OK");
             }
             catch (Exception ex)
