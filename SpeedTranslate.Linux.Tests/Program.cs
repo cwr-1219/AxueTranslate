@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("AppConfig keeps markdown rendering defaults", TestMarkdownRenderingConfigDefaults),
     ("AppConfig keeps translation history defaults", TestTranslationHistoryConfigDefaults),
     ("History hotkey is configurable and registered", TestHistoryHotkeyConfiguration),
+    ("AppConfig keeps chat draft defaults", TestChatDraftConfigDefaults),
+    ("Chat draft hotkey is configurable and registered", TestChatDraftHotkeyConfiguration),
+    ("AppConfig keeps context rewrite defaults", TestContextRewriteConfigDefaults),
+    ("Context rewrite hotkey is configurable and registered", TestContextRewriteHotkeyConfiguration),
+    ("LLMService parses chat reply draft JSON", TestChatReplyDraftParsing),
+    ("LLMService generates context rewrite drafts with cached context payload", TestContextRewriteDraftGeneration),
+    ("LLMService falls back for non-JSON chat reply output", TestChatReplyDraftFallback),
+    ("ChatDraftWindow exposes candidate copy UI", TestChatDraftWindowUi),
     ("TranslationHistoryWindow exposes yellow favorite star color", TestHistoryFavoriteStarColor),
     ("TranslationHistoryService stores and searches local entries", TestTranslationHistoryServiceStoresAndSearches),
     ("TranslationHistoryService prunes old ordinary history but keeps favorites first", TestTranslationHistoryPruning),
@@ -275,6 +284,216 @@ static Task TestHistoryHotkeyConfiguration()
     var appCode = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/App.axaml.cs"));
     if (!appCode.Contains("ReregisterHistoryHotkey") || !appCode.Contains("ShowHistoryWindow"))
         throw new Exception("App should register a global history hotkey that opens history.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestChatDraftConfigDefaults()
+{
+    var config = new AppConfig();
+    if (config.ChatReplyTone != "PoliteFriendly")
+        throw new Exception($"Expected default chat reply tone PoliteFriendly, got {config.ChatReplyTone}.");
+
+    if (config.ChatDraftHotkey.DisplayText != "Ctrl + Alt + R")
+        throw new Exception($"Expected default chat draft hotkey Ctrl + Alt + R, got {config.ChatDraftHotkey.DisplayText}.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestChatDraftHotkeyConfiguration()
+{
+    var method = typeof(GlobalHotkeyService).GetMethod("Register4");
+    if (method == null)
+        throw new Exception("Expected GlobalHotkeyService.Register4 for chat draft hotkey.");
+
+    var previousConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+    var tempConfigHome = Path.Combine(Path.GetTempPath(), "axue-chat-hotkey-test-" + Guid.NewGuid());
+    Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tempConfigHome);
+
+    try
+    {
+        var vm = new SpeedTranslate.Linux.ViewModels.MainWindowViewModel();
+        vm.ApplyChatDraftHotkey(HotkeyModifiers.Control | HotkeyModifiers.Shift, "R");
+        vm.ChatReplyToneIndex = 2;
+
+        if (vm.ChatDraftHotkeyDisplay != "Ctrl + Shift + R")
+            throw new Exception($"Expected chat draft hotkey display to update, got {vm.ChatDraftHotkeyDisplay}.");
+
+        if (vm.CurrentConfig.ChatDraftHotkey.DisplayText != "Ctrl + Shift + R")
+            throw new Exception("Expected runtime config to reflect chat draft hotkey.");
+
+        if (vm.CurrentConfig.ChatReplyTone != "ConciseDirect")
+            throw new Exception("Expected runtime config to reflect chat reply tone.");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+        if (Directory.Exists(tempConfigHome))
+            Directory.Delete(tempConfigHome, recursive: true);
+    }
+
+    var xaml = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Views/MainWindow.axaml"));
+    if (!xaml.Contains("ChatDraftHotkeyTextBox") || !xaml.Contains("ChatReplyToneOptions"))
+        throw new Exception("Settings window should expose chat draft controls.");
+
+    var appCode = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/App.axaml.cs"));
+    if (!appCode.Contains("ReregisterChatDraftHotkey") || !appCode.Contains("TriggerChatDraft"))
+        throw new Exception("App should register a global chat draft hotkey.");
+
+    var coordinatorCode = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Services/TranslationCoordinator.cs"));
+    if (!coordinatorCode.Contains("GetPrimarySelectionAsync") || !coordinatorCode.Contains("ChatReplyDraft"))
+        throw new Exception("Chat draft flow should read the selected X11 PRIMARY text and save history.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestContextRewriteConfigDefaults()
+{
+    var config = new AppConfig();
+    if (config.ContextRewriteHotkey.DisplayText != "Ctrl + Alt + E")
+        throw new Exception(
+            $"Expected default context rewrite hotkey Ctrl + Alt + E, got {config.ContextRewriteHotkey.DisplayText}.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestContextRewriteHotkeyConfiguration()
+{
+    var method = typeof(GlobalHotkeyService).GetMethod("Register5");
+    if (method == null)
+        throw new Exception("Expected GlobalHotkeyService.Register5 for context rewrite hotkey.");
+
+    var previousConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+    var tempConfigHome = Path.Combine(Path.GetTempPath(), "axue-context-hotkey-test-" + Guid.NewGuid());
+    Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tempConfigHome);
+
+    try
+    {
+        var vm = new SpeedTranslate.Linux.ViewModels.MainWindowViewModel();
+        vm.ApplyContextRewriteHotkey(HotkeyModifiers.Control | HotkeyModifiers.Shift, "E");
+
+        if (vm.ContextRewriteHotkeyDisplay != "Ctrl + Shift + E")
+            throw new Exception(
+                $"Expected context rewrite hotkey display to update, got {vm.ContextRewriteHotkeyDisplay}.");
+
+        if (vm.CurrentConfig.ContextRewriteHotkey.DisplayText != "Ctrl + Shift + E")
+            throw new Exception("Expected runtime config to reflect context rewrite hotkey.");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+        if (Directory.Exists(tempConfigHome))
+            Directory.Delete(tempConfigHome, recursive: true);
+    }
+
+    var xaml = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Views/MainWindow.axaml"));
+    if (!xaml.Contains("ContextRewriteHotkeyTextBox") || !xaml.Contains("ContextRewriteHotkeyDisplay"))
+        throw new Exception("Settings window should expose context rewrite controls.");
+
+    var appCode = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/App.axaml.cs"));
+    if (!appCode.Contains("ReregisterContextRewriteHotkey") || !appCode.Contains("TriggerContextRewrite"))
+        throw new Exception("App should register a global context rewrite hotkey.");
+
+    var coordinatorCode = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Services/TranslationCoordinator.cs"));
+    if (!coordinatorCode.Contains("_cachedChatContext") ||
+        !coordinatorCode.Contains("请先选中聊天记录并按聊天草稿热键") ||
+        !coordinatorCode.Contains("请先选中你的中文回复"))
+    {
+        throw new Exception("Context rewrite flow should cache context and handle missing input states.");
+    }
+
+    return Task.CompletedTask;
+}
+
+static Task TestChatReplyDraftParsing()
+{
+    var drafts = LLMService.ParseChatReplyDrafts("""
+        {"drafts":[
+          {"label":"最佳回复","chineseIntent":"表达赞同","englishReply":"That sounds good to me."},
+          {"label":"更轻松","chineseIntent":"轻松回应","englishReply":"Yeah, that sounds good."},
+          {"label":"更稳妥","chineseIntent":"礼貌确认","englishReply":"That works for me, thank you."}
+        ]}
+        """);
+
+    if (drafts.Count != 3)
+        throw new Exception($"Expected 3 parsed drafts, got {drafts.Count}.");
+
+    if (drafts[0].Label != "最佳回复" || drafts[0].ChineseIntent != "表达赞同")
+        throw new Exception("Expected draft metadata to be parsed.");
+
+    if (drafts[1].EnglishReply != "Yeah, that sounds good.")
+        throw new Exception("Expected English reply to be parsed.");
+
+    return Task.CompletedTask;
+}
+
+static async Task TestContextRewriteDraftGeneration()
+{
+    var handler = new RespondingHttpMessageHandler("""
+        {"choices":[{"message":{"content":"{\"drafts\":[{\"label\":\"最佳回复\",\"chineseIntent\":\"表达愿意稍后见\",\"englishReply\":\"Sure, see you later.\"},{\"label\":\"自然一点\",\"chineseIntent\":\"轻松回应\",\"englishReply\":\"Yeah, see you later.\"},{\"label\":\"礼貌一点\",\"chineseIntent\":\"礼貌确认\",\"englishReply\":\"Sure, I'll see you later.\"}]}"}}]}
+        """);
+    using var httpClient = new HttpClient(handler);
+    var service = new LLMService(httpClient);
+    var config = new AppConfig
+    {
+        SelectedModel = "Custom",
+        CustomUrl = "https://example.invalid/v1",
+        CustomApiKey = "test-key",
+        CustomModel = "test-model",
+    };
+
+    var drafts = await service.GenerateContextRewriteDraftsAsync(
+        "UK friend: See you later.",
+        "好的，晚点见。",
+        config);
+
+    if (drafts.Count != 3)
+        throw new Exception($"Expected 3 context rewrite drafts, got {drafts.Count}.");
+
+    if (drafts[0].Label != "最佳回复" || drafts[0].EnglishReply != "Sure, see you later.")
+        throw new Exception("Expected context rewrite draft to be parsed.");
+
+    var requestJson = JsonDocument.Parse(handler.LastRequestBody);
+    var userContent = requestJson.RootElement
+        .GetProperty("messages")[1]
+        .GetProperty("content")
+        .GetString() ?? "";
+
+    if (!userContent.Contains("Recent chat context:") ||
+        !userContent.Contains("UK friend: See you later.") ||
+        !userContent.Contains("Chinese draft reply:") ||
+        !userContent.Contains("好的，晚点见。"))
+    {
+        throw new Exception("Expected context rewrite request to include both context and Chinese draft reply.");
+    }
+}
+
+static Task TestChatReplyDraftFallback()
+{
+    var drafts = LLMService.ParseChatReplyDrafts("Sure, that sounds good to me.");
+    if (drafts.Count != 1)
+        throw new Exception($"Expected one fallback draft, got {drafts.Count}.");
+
+    if (drafts[0].Label != "最佳回复" || drafts[0].EnglishReply != "Sure, that sounds good to me.")
+        throw new Exception("Expected fallback draft to keep the model output.");
+
+    return Task.CompletedTask;
+}
+
+static Task TestChatDraftWindowUi()
+{
+    var xaml = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Views/ChatDraftWindow.axaml"));
+    if (!xaml.Contains("DraftListPanel") || !xaml.Contains("第一条最佳回复已复制到剪贴板"))
+        throw new Exception("Chat draft window should expose a candidate list and clipboard hint.");
+
+    var source = File.ReadAllText(GetRepoPath("SpeedTranslate.Linux/Views/ChatDraftWindow.axaml.cs"));
+    if (!source.Contains("CopyButton_Click") ||
+        !source.Contains("SetClipboardTextAsync") ||
+        !source.Contains("clipboardHint") ||
+        !source.Contains("title"))
+    {
+        throw new Exception("Chat draft window should support copying candidates and custom context rewrite labels.");
+    }
 
     return Task.CompletedTask;
 }
@@ -731,5 +950,31 @@ internal sealed class WaitingHttpMessageHandler : HttpMessageHandler
         RequestStarted.TrySetResult();
         await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+    }
+}
+
+internal sealed class RespondingHttpMessageHandler : HttpMessageHandler
+{
+    private readonly string _responseBody;
+
+    public string LastRequestBody { get; private set; } = "";
+
+    public RespondingHttpMessageHandler(string responseBody)
+    {
+        _responseBody = responseBody;
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        LastRequestBody = request.Content == null
+            ? ""
+            : await request.Content.ReadAsStringAsync(cancellationToken);
+
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent(_responseBody),
+        };
     }
 }

@@ -17,6 +17,10 @@ public sealed class GlobalHotkeyService : IDisposable
     private Action? _callback2;
     private HotkeyDescriptor? _registered3;
     private Action? _callback3;
+    private HotkeyDescriptor? _registered4;
+    private Action? _callback4;
+    private HotkeyDescriptor? _registered5;
+    private Action? _callback5;
 
     private bool _ctrl, _alt, _shift, _meta;
     private bool _suppressed;
@@ -40,6 +44,18 @@ public sealed class GlobalHotkeyService : IDisposable
     {
         _registered3 = hotkey;
         _callback3 = callback;
+    }
+
+    public void Register4(HotkeyDescriptor hotkey, Action callback)
+    {
+        _registered4 = hotkey;
+        _callback4 = callback;
+    }
+
+    public void Register5(HotkeyDescriptor hotkey, Action callback)
+    {
+        _registered5 = hotkey;
+        _callback5 = callback;
     }
 
     public void Start()
@@ -178,6 +194,42 @@ public sealed class GlobalHotkeyService : IDisposable
             catch (Exception ex)
             {
                 DebugLog.Write($"[Hook] history callback exception: {ex.Message}");
+            }
+            return;
+        }
+
+        // 聊天草稿热键
+        if (_registered4 != null && _callback4 != null &&
+            pressedMods == _registered4.Modifiers &&
+            string.Equals(avKey, _registered4.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            _suppressed = true;
+            try
+            {
+                DebugLog.Write($"[Hook] chat draft hotkey matched: {_registered4.DisplayText}");
+                _callback4.Invoke();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"[Hook] chat draft callback exception: {ex.Message}");
+            }
+            return;
+        }
+
+        // 上下文改写热键
+        if (_registered5 != null && _callback5 != null &&
+            pressedMods == _registered5.Modifiers &&
+            string.Equals(avKey, _registered5.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            _suppressed = true;
+            try
+            {
+                DebugLog.Write($"[Hook] context rewrite hotkey matched: {_registered5.DisplayText}");
+                _callback5.Invoke();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"[Hook] context rewrite callback exception: {ex.Message}");
             }
         }
     }

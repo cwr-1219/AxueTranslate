@@ -50,10 +50,24 @@ public sealed class TrayIconService : IDisposable
     }
 
     /// <summary>
-    /// 动态绘制带紫色渐变和白色"译"字的圆形图标（32x32 PNG）。
+    /// 优先使用和桌面图标一致的 PNG 资源；资源缺失时再动态绘制兜底图标。
     /// </summary>
     private static WindowIcon CreateTrayIcon()
     {
+        try
+        {
+            using var iconStream = AssetLoader.Open(
+                new Uri("avares://AxueTranslate/Assets/axue-translate-tray.png"));
+            using var assetStream = new MemoryStream();
+            iconStream.CopyTo(assetStream);
+            assetStream.Position = 0;
+            return new WindowIcon(assetStream);
+        }
+        catch
+        {
+            // Keep a drawable fallback so the tray still appears if the asset is missing.
+        }
+
         const int size = 64;
         var rt = new RenderTargetBitmap(new PixelSize(size, size), new Vector(96, 96));
 
