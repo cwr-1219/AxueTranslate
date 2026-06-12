@@ -57,10 +57,12 @@ public partial class App : Application
             ReregisterTooltipHotkey();
             ReregisterHistoryHotkey();
             ReregisterChatDraftHotkey();
+            ReregisterContextRewriteHotkey();
             _vm.HotkeyChanged += (_, _) => ReregisterHotkey();
             _vm.TooltipHotkeyChanged += (_, _) => ReregisterTooltipHotkey();
             _vm.HistoryHotkeyChanged += (_, _) => ReregisterHistoryHotkey();
             _vm.ChatDraftHotkeyChanged += (_, _) => ReregisterChatDraftHotkey();
+            _vm.ContextRewriteHotkeyChanged += (_, _) => ReregisterContextRewriteHotkey();
             _hotkey.Start();
 
             // 托盘
@@ -164,6 +166,13 @@ public partial class App : Application
         if (_hotkey == null || _vm == null || _coordinator == null) return;
         DebugLog.Write($"[App] Register chat draft hotkey: {_vm.ChatDraftHotkey.DisplayText}");
         _hotkey.Register4(_vm.ChatDraftHotkey, () => _coordinator.TriggerChatDraft());
+    }
+
+    private void ReregisterContextRewriteHotkey()
+    {
+        if (_hotkey == null || _vm == null || _coordinator == null) return;
+        DebugLog.Write($"[App] Register context rewrite hotkey: {_vm.ContextRewriteHotkey.DisplayText}");
+        _hotkey.Register5(_vm.ContextRewriteHotkey, () => _coordinator.TriggerContextRewrite());
     }
 
     private void CheckSessionType()

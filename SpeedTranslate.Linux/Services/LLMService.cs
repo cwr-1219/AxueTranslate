@@ -120,6 +120,43 @@ CRITICAL RULES:
         return ParseChatReplyDrafts(raw);
     }
 
+    public async Task<IReadOnlyList<ChatReplyDraft>> GenerateContextRewriteDraftsAsync(
+        string conversationText,
+        string chineseReply,
+        AppConfig config,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(conversationText) || string.IsNullOrWhiteSpace(chineseReply))
+            return Array.Empty<ChatReplyDraft>();
+
+        var tonePrompt = GetChatReplyTonePrompt(config.ChatReplyTone);
+        var systemPrompt = $@"You are a bilingual chat writing assistant helping a Chinese speaker reply naturally in English to someone in the UK.
+
+Use the recent chat context to rewrite the user's Chinese draft reply into natural English. Preserve the user's intent and do not invent new facts, promises, feelings, dates, or commitments.
+
+Tone:
+{tonePrompt}
+
+CRITICAL RULES:
+1. Return ONLY valid JSON. Do NOT wrap it in Markdown code fences and do NOT add explanations.
+2. Return exactly 3 drafts in this shape:
+{{""drafts"":[{{""label"":""最佳回复"",""chineseIntent"":""中文说明"",""englishReply"":""English reply""}}]}}
+3. Use these labels in order: 最佳回复, 自然一点, 礼貌一点.
+4. The first draft must be the best default reply and paste-ready.
+5. Write chineseIntent in 简体中文. Write englishReply in English only.";
+
+        var userText = $@"Recent chat context:
+{conversationText.Trim()}
+
+Chinese draft reply:
+{chineseReply.Trim()}";
+
+        var raw = await SendChatCompletionAsync(userText, config, systemPrompt, 0.55f, cancellationToken);
+        return ParseChatReplyDrafts(raw);
+    }
+
     private async Task<string> SendChatCompletionAsync(
         string text,
         AppConfig config,

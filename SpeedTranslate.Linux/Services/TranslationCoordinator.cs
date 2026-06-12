@@ -23,6 +23,7 @@ public sealed class TranslationCoordinator
     private readonly InputSimulator _input = new();
     private readonly ClipboardService _clipboard = new();
     private readonly CancellationTokenSource _shutdownCts = new();
+    private string _cachedChatContext = "";
     private int _isShutdownCancellationStarted;
     private int _isTranslating;
 
@@ -55,6 +56,11 @@ public sealed class TranslationCoordinator
     public void TriggerChatDraft()
     {
         _ = Task.Run(() => RunChatDraftFlowAsync(_shutdownCts.Token));
+    }
+
+    public void TriggerContextRewrite()
+    {
+        _ = Task.Run(() => RunContextRewriteFlowAsync(_shutdownCts.Token));
     }
 
     public void CancelPendingWork()
@@ -118,6 +124,10 @@ public sealed class TranslationCoordinator
                 return;
             }
 
+            // Only keep the latest context in memory; it is not persisted to disk.
+            _cachedChatContext = conversationText;
+            DebugLog.Write($"[Coord] chat draft: cached context (len={_cachedChatContext.Length})");
+
             var drafts = await _llm.GenerateChatReplyDraftsAsync(conversationText, config, cancellationToken);
             if (drafts.Count == 0 || string.IsNullOrWhiteSpace(drafts[0].EnglishReply))
             {
@@ -164,6 +174,102 @@ public sealed class TranslationCoordinator
         {
             Interlocked.Exchange(ref _isTranslating, 0);
             DebugLog.Write("[Coord] chat draft flow end");
+        }
+    }
+
+    private async Task RunContextRewriteFlowAsync(CancellationToken cancellationToken)
+    {
+        if (Interlocked.Exchange(ref _isTranslating, 1) == 1)
+        {
+            DebugLog.Write("[Coord] context rewrite: already translating, skip");
+            return;
+        }
+
+        DebugLog.Write("[Coord] context rewrite flow start");
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var config = _vm.CurrentConfig;
+            var (cx, cy) = X11Mouse.GetPosition();
+            var cursorPos = new Avalonia.PixelPoint(cx, cy);
+            await InvokeOnUiThreadAsync(
+                () => _statusWindow.ShowAtCursor(cx, cy, "AI 正在改写回复..."),
+                cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(_cachedChatContext))
+            {
+                await InvokeOnUiThreadAsync(
+                    () => _statusWindow.ShowError("请先选中聊天记录并按聊天草稿热键"),
+                    cancellationToken);
+                return;
+            }
+
+            var chineseReply = await _clipboard.GetPrimarySelectionAsync();
+            DebugLog.Write($"[Coord] context rewrite: PRIMARY (len={chineseReply.Length}): {Trunc(chineseReply)}");
+            if (string.IsNullOrWhiteSpace(chineseReply))
+            {
+                await InvokeOnUiThreadAsync(
+                    () => _statusWindow.ShowError("请先选中你的中文回复"),
+                    cancellationToken);
+                return;
+            }
+
+            var drafts = await _llm.GenerateContextRewriteDraftsAsync(
+                _cachedChatContext,
+                chineseReply,
+                config,
+                cancellationToken);
+            if (drafts.Count == 0 || string.IsNullOrWhiteSpace(drafts[0].EnglishReply))
+            {
+                await InvokeOnUiThreadAsync(
+                    () => _statusWindow.ShowError("模型没有生成改写"),
+                    cancellationToken);
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await _clipboard.SetClipboardTextAsync(drafts[0].EnglishReply);
+            DebugLog.Write($"[Coord] context rewrite: copied best draft (len={drafts[0].EnglishReply.Length})");
+
+            TranslationHistoryService.AddEntry(
+                TranslationHistoryService.CreateEntry(
+                    $"{_cachedChatContext}\n\n我的中文回复：\n{chineseReply}",
+                    FormatChatDraftsForHistory(drafts),
+                    config,
+                    "ContextRewriteDraft"),
+                config);
+
+            await InvokeOnUiThreadAsync(() =>
+            {
+                _statusWindow.HideWithFade();
+                _chatDraftWindow?.ShowDrafts(
+                    drafts,
+                    config,
+                    cursorPos,
+                    title: "上下文改写",
+                    clipboardHint: "第一条改写已复制到剪贴板");
+            }, cancellationToken);
+
+            DebugLog.Write("[Coord] context rewrite flow OK");
+        }
+        catch (Exception ex)
+        {
+            if (IsExitCancellation(ex, cancellationToken))
+            {
+                DebugLog.Write("[Coord] context rewrite flow canceled");
+                return;
+            }
+
+            DebugLog.Write($"[Coord] context rewrite exception: {ex.GetType().Name}: {ex.Message}");
+            ConfigManager.WriteErrorLog("ContextRewriteFlow", ex);
+            var friendly = MapErrorMessage(ex.Message);
+            await InvokeOnUiThreadAsync(() => _statusWindow.ShowError(friendly), cancellationToken);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isTranslating, 0);
+            DebugLog.Write("[Coord] context rewrite flow end");
         }
     }
 

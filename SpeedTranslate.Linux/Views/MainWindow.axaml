@@ -153,7 +153,7 @@
                         <StackPanel>
                             <TextBlock Text="聊天模式" Classes="CardTitle" />
 
-                            <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,12,Auto">
+                            <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,12,Auto,12,Auto">
                                 <StackPanel Grid.Row="0" Grid.Column="0">
                                     <TextBlock Text="回复语气" Classes="Label" />
                                     <ComboBox Classes="Modern"
@@ -163,7 +163,7 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="2">
-                                    <TextBlock Text="聊天草稿热键 (点击录入)" Classes="Label" />
+                                    <TextBlock Text="缓存上下文热键 (点击录入)" Classes="Label" />
                                     <TextBox Name="ChatDraftHotkeyTextBox"
                                              Classes="Input"
                                              IsReadOnly="True"
@@ -173,9 +173,20 @@
                                              KeyDown="ChatDraftHotkeyTextBox_KeyDown" />
                                 </StackPanel>
 
-                                <TextBlock Grid.Row="2"
+                                <StackPanel Grid.Row="2" Grid.Column="0">
+                                    <TextBlock Text="上下文改写热键 (点击录入)" Classes="Label" />
+                                    <TextBox Name="ContextRewriteHotkeyTextBox"
+                                             Classes="Input"
+                                             IsReadOnly="True"
+                                             Cursor="Hand"
+                                             TextAlignment="Center"
+                                             Text="{Binding ContextRewriteHotkeyDisplay, Mode=OneWay}"
+                                             KeyDown="ContextRewriteHotkeyTextBox_KeyDown" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="4"
                                            Grid.ColumnSpan="3"
-                                           Text="选中最近聊天记录后触发，AI 会生成 3 条英文回复候选，并自动复制第一条最佳回复"
+                                           Text="先选中最近聊天记录并缓存上下文；再选中你的中文回复触发上下文改写，AI 会生成 3 条英文候选并复制第一条"
                                            Foreground="#64748B"
                                            FontSize="12"
                                            LineHeight="18"

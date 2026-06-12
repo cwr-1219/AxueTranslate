@@ -28,13 +28,18 @@ public partial class ChatDraftWindow : Window
     public void ShowDrafts(
         IReadOnlyList<ChatReplyDraft> drafts,
         AppConfig config,
-        PixelPoint cursorPos)
+        PixelPoint cursorPos,
+        string title = "聊天草稿",
+        string clipboardHint = "第一条最佳回复已复制到剪贴板")
     {
         _isClosing = false;
         _anchor = ComputePosition(cursorPos);
 
         if (this.FindControl<TextBlock>("ModelTagText") is { } modelTag)
-            modelTag.Text = $"聊天草稿 ({config.SelectedModel})";
+            modelTag.Text = $"{title} ({config.SelectedModel})";
+
+        if (this.FindControl<TextBlock>("ClipboardHintText") is { } hint)
+            hint.Text = clipboardHint;
 
         BuildDraftCards(drafts);
         ApplyLayout(drafts);

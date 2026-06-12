@@ -52,4 +52,9 @@ public class AppConfig
         Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
         Key = "R",
     };
+    public HotkeyDescriptor ContextRewriteHotkey { get; set; } = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "E",
+    };
 }
