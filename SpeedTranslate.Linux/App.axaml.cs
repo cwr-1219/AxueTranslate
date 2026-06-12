@@ -18,6 +18,7 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private TranslationStatusWindow? _statusWindow;
     private TranslationTooltipWindow? _tooltipWindow;
+    private ChatDraftWindow? _chatDraftWindow;
     private MainWindowViewModel? _vm;
     private GlobalHotkeyService? _hotkey;
     private TrayIconService? _tray;
@@ -45,17 +46,21 @@ public partial class App : Application
 
             _statusWindow = new TranslationStatusWindow();
             _tooltipWindow = new TranslationTooltipWindow();
+            _chatDraftWindow = new ChatDraftWindow();
             _coordinator = new TranslationCoordinator(_vm, _statusWindow);
             _coordinator.SetTooltipWindow(_tooltipWindow);
+            _coordinator.SetChatDraftWindow(_chatDraftWindow);
 
             // 全局热键
             _hotkey = new GlobalHotkeyService();
             ReregisterHotkey();
             ReregisterTooltipHotkey();
             ReregisterHistoryHotkey();
+            ReregisterChatDraftHotkey();
             _vm.HotkeyChanged += (_, _) => ReregisterHotkey();
             _vm.TooltipHotkeyChanged += (_, _) => ReregisterTooltipHotkey();
             _vm.HistoryHotkeyChanged += (_, _) => ReregisterHistoryHotkey();
+            _vm.ChatDraftHotkeyChanged += (_, _) => ReregisterChatDraftHotkey();
             _hotkey.Start();
 
             // 托盘
@@ -152,6 +157,13 @@ public partial class App : Application
         _hotkey.Register3(
             _vm.HistoryHotkey,
             () => Dispatcher.UIThread.Post(() => _mainWindow.ShowHistoryWindow()));
+    }
+
+    private void ReregisterChatDraftHotkey()
+    {
+        if (_hotkey == null || _vm == null || _coordinator == null) return;
+        DebugLog.Write($"[App] Register chat draft hotkey: {_vm.ChatDraftHotkey.DisplayText}");
+        _hotkey.Register4(_vm.ChatDraftHotkey, () => _coordinator.TriggerChatDraft());
     }
 
     private void CheckSessionType()

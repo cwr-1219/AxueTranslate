@@ -90,6 +90,36 @@ CRITICAL RULES:
         return await SendChatCompletionAsync(text, config, systemPrompt, 0.2f, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ChatReplyDraft>> GenerateChatReplyDraftsAsync(
+        string conversationText,
+        AppConfig config,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(conversationText))
+            return Array.Empty<ChatReplyDraft>();
+
+        var tonePrompt = GetChatReplyTonePrompt(config.ChatReplyTone);
+        var systemPrompt = $@"You are a bilingual chat assistant helping a Chinese speaker reply naturally in English to someone in the UK.
+
+The user will provide selected recent chat context. Predict helpful reply drafts based only on that context.
+
+Tone:
+{tonePrompt}
+
+CRITICAL RULES:
+1. Return ONLY valid JSON. Do NOT wrap it in Markdown code fences and do NOT add explanations.
+2. Return exactly 3 drafts in this shape:
+{{""drafts"":[{{""label"":""最佳回复"",""chineseIntent"":""中文说明"",""englishReply"":""English reply""}}]}}
+3. The first draft must be the best default reply and paste-ready.
+4. Keep every English reply natural, concise, and editable. Do not over-apologize, over-flirt, or invent facts.
+5. Write chineseIntent in 简体中文. Write englishReply in English only.";
+
+        var raw = await SendChatCompletionAsync(conversationText, config, systemPrompt, 0.7f, cancellationToken);
+        return ParseChatReplyDrafts(raw);
+    }
+
     private async Task<string> SendChatCompletionAsync(
         string text,
         AppConfig config,
@@ -185,6 +215,48 @@ CRITICAL RULES:
         return string.Join("\n\n", parts);
     }
 
+    public static IReadOnlyList<ChatReplyDraft> ParseChatReplyDrafts(string responseText)
+    {
+        var cleaned = CleanTranslatedText(responseText);
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return Array.Empty<ChatReplyDraft>();
+
+        try
+        {
+            var json = ExtractJsonPayload(cleaned);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var source = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("drafts", out var drafts)
+                ? drafts
+                : root;
+
+            if (source.ValueKind != JsonValueKind.Array)
+            {
+                var single = ReadChatReplyDraft(source, 0);
+                return string.IsNullOrWhiteSpace(single.EnglishReply)
+                    ? CreateFallbackDraft(cleaned)
+                    : new[] { single };
+            }
+
+            var list = new List<ChatReplyDraft>();
+            var index = 0;
+            foreach (var item in source.EnumerateArray())
+            {
+                var draft = ReadChatReplyDraft(item, index++);
+                if (!string.IsNullOrWhiteSpace(draft.EnglishReply))
+                    list.Add(draft);
+                if (list.Count == 3)
+                    break;
+            }
+
+            return list.Count == 0 ? CreateFallbackDraft(cleaned) : list;
+        }
+        catch (JsonException)
+        {
+            return CreateFallbackDraft(cleaned);
+        }
+    }
+
     public async Task<List<string>> GetAvailableModelsAsync(string apiUrl, string apiKey)
     {
         if (string.IsNullOrWhiteSpace(apiUrl) || string.IsNullOrWhiteSpace(apiKey))
@@ -278,6 +350,94 @@ CRITICAL RULES:
             _ => "",
         };
     }
+
+    private static string GetChatReplyTonePrompt(string tone) => tone switch
+    {
+        "BritishCasual" =>
+            "Friendly everyday British English. Keep it relaxed and natural for chat, with light UK phrasing when appropriate.",
+        "ConciseDirect" =>
+            "Short, clear, and direct English. Avoid unnecessary filler while staying polite.",
+        _ =>
+            "Polite and friendly English suitable for UK conversations. Sound warm, respectful, and natural without being too formal.",
+    };
+
+    private static string ExtractJsonPayload(string text)
+    {
+        text = text.Trim();
+        var objectStart = text.IndexOf('{');
+        var objectEnd = text.LastIndexOf('}');
+        if (objectStart >= 0 && objectEnd > objectStart)
+            return text[objectStart..(objectEnd + 1)];
+
+        var arrayStart = text.IndexOf('[');
+        var arrayEnd = text.LastIndexOf(']');
+        if (arrayStart >= 0 && arrayEnd > arrayStart)
+            return text[arrayStart..(arrayEnd + 1)];
+
+        return text;
+    }
+
+    private static ChatReplyDraft ReadChatReplyDraft(JsonElement element, int index)
+    {
+        var label = TryGetString(element, "label", "Label", "title", "name");
+        var chineseIntent = TryGetString(
+            element,
+            "chineseIntent",
+            "ChineseIntent",
+            "chinese_intent",
+            "intent",
+            "reason");
+        var englishReply = TryGetString(
+            element,
+            "englishReply",
+            "EnglishReply",
+            "english_reply",
+            "reply",
+            "text",
+            "content");
+
+        return new ChatReplyDraft
+        {
+            Label = string.IsNullOrWhiteSpace(label) ? DefaultDraftLabel(index) : label.Trim(),
+            ChineseIntent = chineseIntent.Trim(),
+            EnglishReply = englishReply.Trim(),
+        };
+    }
+
+    private static string TryGetString(JsonElement element, params string[] names)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+            return element.GetString() ?? "";
+
+        if (element.ValueKind != JsonValueKind.Object)
+            return "";
+
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String)
+                return property.GetString() ?? "";
+        }
+
+        return "";
+    }
+
+    private static string DefaultDraftLabel(int index) => index switch
+    {
+        1 => "更轻松",
+        2 => "更稳妥",
+        _ => "最佳回复",
+    };
+
+    private static IReadOnlyList<ChatReplyDraft> CreateFallbackDraft(string text) =>
+        new[]
+        {
+            new ChatReplyDraft
+            {
+                Label = "最佳回复",
+                ChineseIntent = "模型未返回标准候选格式，已保留原始回复。",
+                EnglishReply = text.Trim(),
+            },
+        };
 
     private static string CleanTranslatedText(string text)
     {

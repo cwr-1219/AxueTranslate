@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -17,6 +18,7 @@ public sealed class TranslationCoordinator
     private readonly MainWindowViewModel _vm;
     private readonly TranslationStatusWindow _statusWindow;
     private TranslationTooltipWindow? _tooltipWindow;
+    private ChatDraftWindow? _chatDraftWindow;
     private readonly LLMService _llm = new();
     private readonly InputSimulator _input = new();
     private readonly ClipboardService _clipboard = new();
@@ -35,6 +37,11 @@ public sealed class TranslationCoordinator
         _tooltipWindow = tooltipWindow;
     }
 
+    public void SetChatDraftWindow(ChatDraftWindow chatDraftWindow)
+    {
+        _chatDraftWindow = chatDraftWindow;
+    }
+
     public void Trigger()
     {
         _ = Task.Run(() => RunFlowAsync(_shutdownCts.Token));
@@ -43,6 +50,11 @@ public sealed class TranslationCoordinator
     public void TriggerTooltip()
     {
         _ = Task.Run(() => RunTooltipFlowAsync(_shutdownCts.Token));
+    }
+
+    public void TriggerChatDraft()
+    {
+        _ = Task.Run(() => RunChatDraftFlowAsync(_shutdownCts.Token));
     }
 
     public void CancelPendingWork()
@@ -74,6 +86,85 @@ public sealed class TranslationCoordinator
 
         var threshold = Math.Clamp(config.AutoSummaryMinLength, 300, 20000);
         return text.Length >= threshold;
+    }
+
+    private async Task RunChatDraftFlowAsync(CancellationToken cancellationToken)
+    {
+        if (Interlocked.Exchange(ref _isTranslating, 1) == 1)
+        {
+            DebugLog.Write("[Coord] chat draft: already translating, skip");
+            return;
+        }
+
+        DebugLog.Write("[Coord] chat draft flow start");
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var config = _vm.CurrentConfig;
+            var (cx, cy) = X11Mouse.GetPosition();
+            var cursorPos = new Avalonia.PixelPoint(cx, cy);
+            await InvokeOnUiThreadAsync(
+                () => _statusWindow.ShowAtCursor(cx, cy, "AI 正在生成回复..."),
+                cancellationToken);
+
+            var conversationText = await _clipboard.GetPrimarySelectionAsync();
+            DebugLog.Write($"[Coord] chat draft: PRIMARY (len={conversationText.Length}): {Trunc(conversationText)}");
+            if (string.IsNullOrWhiteSpace(conversationText))
+            {
+                await InvokeOnUiThreadAsync(
+                    () => _statusWindow.ShowError("请先选中最近聊天记录"),
+                    cancellationToken);
+                return;
+            }
+
+            var drafts = await _llm.GenerateChatReplyDraftsAsync(conversationText, config, cancellationToken);
+            if (drafts.Count == 0 || string.IsNullOrWhiteSpace(drafts[0].EnglishReply))
+            {
+                await InvokeOnUiThreadAsync(
+                    () => _statusWindow.ShowError("模型没有生成回复"),
+                    cancellationToken);
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await _clipboard.SetClipboardTextAsync(drafts[0].EnglishReply);
+            DebugLog.Write($"[Coord] chat draft: copied best draft (len={drafts[0].EnglishReply.Length})");
+
+            TranslationHistoryService.AddEntry(
+                TranslationHistoryService.CreateEntry(
+                    conversationText,
+                    FormatChatDraftsForHistory(drafts),
+                    config,
+                    "ChatReplyDraft"),
+                config);
+
+            await InvokeOnUiThreadAsync(() =>
+            {
+                _statusWindow.HideWithFade();
+                _chatDraftWindow?.ShowDrafts(drafts, config, cursorPos);
+            }, cancellationToken);
+
+            DebugLog.Write("[Coord] chat draft flow OK");
+        }
+        catch (Exception ex)
+        {
+            if (IsExitCancellation(ex, cancellationToken))
+            {
+                DebugLog.Write("[Coord] chat draft flow canceled");
+                return;
+            }
+
+            DebugLog.Write($"[Coord] chat draft exception: {ex.GetType().Name}: {ex.Message}");
+            ConfigManager.WriteErrorLog("ChatDraftFlow", ex);
+            var friendly = MapErrorMessage(ex.Message);
+            await InvokeOnUiThreadAsync(() => _statusWindow.ShowError(friendly), cancellationToken);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isTranslating, 0);
+            DebugLog.Write("[Coord] chat draft flow end");
+        }
     }
 
     private async Task RunTooltipFlowAsync(CancellationToken cancellationToken)
@@ -338,6 +429,11 @@ public sealed class TranslationCoordinator
         cancellationToken.IsCancellationRequested;
 
     private static string Trunc(string s) => s.Length > 80 ? s[..80] + "..." : s;
+
+    private static string FormatChatDraftsForHistory(System.Collections.Generic.IReadOnlyList<ChatReplyDraft> drafts) =>
+        string.Join(
+            "\n\n",
+            drafts.Select(d => $"{d.Label}\n{d.ChineseIntent}\n{d.EnglishReply}".Trim()));
 
     private static string MapErrorMessage(string raw)
     {

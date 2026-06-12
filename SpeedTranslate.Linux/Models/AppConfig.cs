@@ -34,6 +34,8 @@ public class AppConfig
     public int HistoryRetentionDays { get; set; } = 30;
     public int MaxHistoryItems { get; set; } = 500;
 
+    public string ChatReplyTone { get; set; } = "PoliteFriendly";
+
     public HotkeyDescriptor Hotkey { get; set; } = new();
     public HotkeyDescriptor TooltipHotkey { get; set; } = new()
     {
@@ -44,5 +46,10 @@ public class AppConfig
     {
         Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
         Key = "H",
+    };
+    public HotkeyDescriptor ChatDraftHotkey { get; set; } = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "R",
     };
 }

@@ -54,9 +54,9 @@ public partial class TranslationStatusWindow : Window
     /// <summary>
     /// 在指定屏幕坐标（鼠标位置 + 偏移）显示，并重置为"翻译中"状态。
     /// </summary>
-    public void ShowAtCursor(int cursorX, int cursorY)
+    public void ShowAtCursor(int cursorX, int cursorY, string message = "AI 正在翻译中...")
     {
-        Reset();
+        Reset(message);
         // 鼠标右下方 25 像素
         Position = new PixelPoint(cursorX + 25, cursorY + 25);
         Opacity = 0;
@@ -69,11 +69,11 @@ public partial class TranslationStatusWindow : Window
 
     public static (int X, int Y) GetCursorPos() => X11Mouse.GetPosition();
 
-    private void Reset()
+    private void Reset(string message = "AI 正在翻译中...")
     {
         if (_statusText != null)
         {
-            _statusText.Text = "AI 正在翻译中...";
+            _statusText.Text = message;
             _statusText.Foreground = Brush.Parse("#E2E8F0");
         }
         if (_spinnerPath != null)

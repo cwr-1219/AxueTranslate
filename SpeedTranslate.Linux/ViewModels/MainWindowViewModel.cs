@@ -40,6 +40,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool _enableTranslationHistory = true;
     [ObservableProperty] private int _historyRetentionDays = 30;
     [ObservableProperty] private int _maxHistoryItems = 500;
+    [ObservableProperty] private int _chatReplyToneIndex;
 
     public ObservableCollection<string> MarkdownColorModeOptions { get; } = new()
     {
@@ -49,6 +50,20 @@ public partial class MainWindowViewModel : ViewModelBase
     private static readonly string[] MarkdownColorModeTags =
     {
         MarkdownColorRenderModes.SemanticTags,
+    };
+
+    public ObservableCollection<string> ChatReplyToneOptions { get; } = new()
+    {
+        "礼貌友好",
+        "英式日常",
+        "简洁直接",
+    };
+
+    private static readonly string[] ChatReplyToneTags =
+    {
+        "PoliteFriendly",
+        "BritishCasual",
+        "ConciseDirect",
     };
 
     [ObservableProperty] private HotkeyDescriptor _hotkey = new();
@@ -68,6 +83,13 @@ public partial class MainWindowViewModel : ViewModelBase
     };
     public string HistoryHotkeyDisplay => HistoryHotkey.DisplayText;
 
+    [ObservableProperty] private HotkeyDescriptor _chatDraftHotkey = new()
+    {
+        Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt,
+        Key = "R",
+    };
+    public string ChatDraftHotkeyDisplay => ChatDraftHotkey.DisplayText;
+
     [ObservableProperty] private bool _isFetchingModels;
     [ObservableProperty] private string _fetchModelsButtonText = "切换模型";
 
@@ -79,6 +101,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public event EventHandler<HotkeyDescriptor>? HotkeyChanged;
     public event EventHandler<HotkeyDescriptor>? TooltipHotkeyChanged;
     public event EventHandler<HotkeyDescriptor>? HistoryHotkeyChanged;
+    public event EventHandler<HotkeyDescriptor>? ChatDraftHotkeyChanged;
 
     private static readonly string[] LanguageTags =
         { "Auto", "English", "Chinese", "Japanese", "Korean", "French", "German", "Spanish" };
@@ -141,6 +164,8 @@ public partial class MainWindowViewModel : ViewModelBase
         EnableTranslationHistory = config.EnableTranslationHistory;
         HistoryRetentionDays = Math.Clamp(config.HistoryRetentionDays, 1, 3650);
         MaxHistoryItems = Math.Clamp(config.MaxHistoryItems, 1, 10000);
+        var chatToneIdx = Array.IndexOf(ChatReplyToneTags, config.ChatReplyTone);
+        ChatReplyToneIndex = chatToneIdx < 0 ? 0 : chatToneIdx;
 
         Hotkey = config.Hotkey;
         OnPropertyChanged(nameof(HotkeyDisplay));
@@ -150,6 +175,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
         HistoryHotkey = config.HistoryHotkey;
         OnPropertyChanged(nameof(HistoryHotkeyDisplay));
+
+        ChatDraftHotkey = config.ChatDraftHotkey;
+        OnPropertyChanged(nameof(ChatDraftHotkeyDisplay));
     }
 
     partial void OnSelectedModelIndexChanged(int oldValue, int newValue)
@@ -223,6 +251,12 @@ public partial class MainWindowViewModel : ViewModelBase
         HistoryHotkeyChanged?.Invoke(this, value);
     }
 
+    partial void OnChatDraftHotkeyChanged(HotkeyDescriptor value)
+    {
+        OnPropertyChanged(nameof(ChatDraftHotkeyDisplay));
+        ChatDraftHotkeyChanged?.Invoke(this, value);
+    }
+
     private void LoadModelInputsFromConfig(string modelKey)
     {
         switch (modelKey)
@@ -286,9 +320,12 @@ public partial class MainWindowViewModel : ViewModelBase
         _config.EnableTranslationHistory = EnableTranslationHistory;
         _config.HistoryRetentionDays = Math.Clamp(HistoryRetentionDays, 1, 3650);
         _config.MaxHistoryItems = Math.Clamp(MaxHistoryItems, 1, 10000);
+        _config.ChatReplyTone =
+            ChatReplyToneTags[Math.Clamp(ChatReplyToneIndex, 0, ChatReplyToneTags.Length - 1)];
         _config.Hotkey = Hotkey;
         _config.TooltipHotkey = TooltipHotkey;
         _config.HistoryHotkey = HistoryHotkey;
+        _config.ChatDraftHotkey = ChatDraftHotkey;
         return _config;
     }
 
@@ -305,6 +342,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public void ApplyHistoryHotkey(HotkeyModifiers modifiers, string keyName)
     {
         HistoryHotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
+    }
+
+    public void ApplyChatDraftHotkey(HotkeyModifiers modifiers, string keyName)
+    {
+        ChatDraftHotkey = new HotkeyDescriptor { Modifiers = modifiers, Key = keyName };
     }
 
     public void ApplyChosenModelName(string modelId)

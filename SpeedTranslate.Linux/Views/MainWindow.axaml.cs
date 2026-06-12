@@ -344,6 +344,11 @@ public partial class MainWindow : Window
         CaptureHotkey(e, (modifiers, keyName) => _vm?.ApplyHistoryHotkey(modifiers, keyName));
     }
 
+    private void ChatDraftHotkeyTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        CaptureHotkey(e, (modifiers, keyName) => _vm?.ApplyChatDraftHotkey(modifiers, keyName));
+    }
+
     private void CaptureHotkey(KeyEventArgs e, Action<HotkeyModifiers, string> apply)
     {
         e.Handled = true;
